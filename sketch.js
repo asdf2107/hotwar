@@ -1,7 +1,8 @@
-const fWidth = 20, fHeight = 20, fieldSize = 30, offsetX = 50, offsetY = 50;
+const fWidth = 20, fHeight = 20, fieldSize = 30, offsetX = 50, offsetY = 50, fAlpha = 100;
 const f = []; // 0 - uncaptured; 1 - player 1; 2 - player 2; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 // const obj = []; // null; troop; tank; city; wall
+const player = [null];
 
 class ClickMgr {
   constructor() {
@@ -29,6 +30,14 @@ class ClickMgr {
   }
 }
 
+class Player {
+  constructor(id, color) {
+    this.id = id;
+    this.color = color;
+    this.money = 50;
+  }
+}
+
 const click = new ClickMgr();
 const clickEvent = () => {
   click.onClick();
@@ -37,6 +46,8 @@ const clickEvent = () => {
 
 // eslint-disable-next-line no-unused-vars
 function setup() {
+  player.push(new Player(1, color(0, 0, 255, fAlpha)));
+  player.push(new Player(2, color(255, 0, 0, fAlpha)));
   initArr(f);
   f[0][0] = 1;
   f[fWidth - 1][fHeight - 1] = 2;
@@ -53,6 +64,7 @@ function setup() {
 function draw() {
   background(0);
   drawBackgr();
+  drawBorders();
 }
 
 
@@ -139,19 +151,33 @@ function drawBackgr() {
   }
 }
 
-function drawGround(x, y) {
-  fill(0, 255, 0);
+function drawF(x, y, ...col) {
+  fill(...col);
   rect(x, y, fieldSize, fieldSize);
 }
 
+function drawGround(x, y) {
+  drawF(x, y, 108, 194, 97);
+}
+
 function drawMount(x, y) {
-  fill(0, 255, 0);
-  rect(x, y, fieldSize, fieldSize);
+  drawGround(x, y);
   fill(180);
   triangle(x + fieldSize / 2, y - fieldSize / 4, x, y + fieldSize, x + fieldSize, y + fieldSize);
 }
 
 function drawSea(x, y) {
-  fill(100, 100, 255);
-  rect(x, y, fieldSize, fieldSize);
+  drawF(x, y, 130, 160, 255);
+}
+
+function drawBorders() {
+  for (let i = 0; i < fWidth; i++) {
+    for (let j = 0; j < fHeight; j++) {
+      const val = f[i][j];
+      if (val !== 0) {
+        const [x, y] = getXYofFied(i, j);
+        drawF(x, y, player[val].color);
+      }
+    }
+  }
 }
