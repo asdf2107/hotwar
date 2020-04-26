@@ -1,17 +1,25 @@
 const fWidth = 20, fHeight = 20, fieldSize = 30, offsetX = 50, offsetY = 50, fAlpha = 100;
 const f = []; // 0 - uncaptured; 1 - player 1; 2 - player 2; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
-// const obj = []; // null; troop; tank; city; wall
-const player = [null];
+const unit = []; // man; tank; city; wall
+const player = []; // active palyers
 
 class ClickMgr {
   constructor() {
     this.zones = [];
   }
 
-  addZone(x, y, w, h, callback, priority = 0) {
+  addZone(x, y, w, h, callback, priority = 0, group = 0) {
     this.zones.push({
-      x, y, w, h, callback, priority,
+      x, y, w, h, callback, priority, group,
+    });
+  }
+
+  delGroup(n) {
+    this.zones.forEach(z => {
+      if (z.group === n) {
+        this.zones.splice(this.zones.indexOf(z));
+      }
     });
   }
 
@@ -30,11 +38,50 @@ class ClickMgr {
   }
 }
 
+class Unit {
+  constructor(i, j, maxHp, hp = maxHp) {
+    this.i = i;
+    this.j = j;
+    this.hp = hp;
+    this.maxHp = maxHp;
+  }
+}
+
+class City extends Unit {
+  constructor(i, j) {
+    super(i, j, 8);
+    this.level = 0;
+  }
+}
+
+class Man extends Unit {
+  constructor(i, j) {
+    super(i, j, 8);
+  }
+}
+
+function getType(u) {
+  if (!(u instanceof Unit)) {
+    throw new Error('getType works for Units only!');
+  }
+  if (u instanceof City) {
+    return 'City';
+  }
+  if (u instanceof Man) {
+    return 'Man';
+  }
+  throw new Error('Unit child not added to getType!');
+}
+
 class Player {
   constructor(id, color) {
     this.id = id;
     this.color = color;
     this.money = 50;
+  }
+
+  conq(i, j) {
+    f[i][j] = this.id;
   }
 }
 
@@ -46,11 +93,11 @@ const clickEvent = () => {
 
 // eslint-disable-next-line no-unused-vars
 function setup() {
-  player.push(new Player(1, color(0, 0, 255, fAlpha)));
-  player.push(new Player(2, color(255, 0, 0, fAlpha)));
-  initArr(f);
-  f[0][0] = 1;
-  f[fWidth - 1][fHeight - 1] = 2;
+  player.push(new Player(0, color(0, 0, 255, fAlpha)));
+  player.push(new Player(1, color(255, 0, 0, fAlpha)));
+  initArr(f, -1);
+  player[0].conq(0, 0);
+  player[1].conq(fWidth - 1, fHeight - 1);
   initArr(ter);
   console.log(f);
   genTerrain();
@@ -65,6 +112,7 @@ function draw() {
   background(0);
   drawBackgr();
   drawBorders();
+  drawUnits();
 }
 
 
@@ -88,10 +136,10 @@ function fieldClick(i, j) {
 
 const lock = (f, ...args) => () => f(...args);
 
-function initArr(arr) {
+function initArr(arr, val = 0) {
   const ySlice = [];
   for (let i = 0; i < fHeight; i++) {
-    ySlice.push(0);
+    ySlice.push(val);
   }
   for (let i = 0; i < fHeight; i++) {
     arr.push(ySlice.slice());
@@ -170,14 +218,39 @@ function drawSea(x, y) {
   drawF(x, y, 130, 160, 255);
 }
 
+function drawCity(x, y) {
+  fill(100);
+  rect(x + fieldSize / 4, y + fieldSize / 5, fieldSize / 2, (fieldSize * 4) / 5);
+}
+
+function drawMan(x, y) {
+  fill(50);
+  ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize / 2, fieldSize / 2);
+}
+
 function drawBorders() {
   for (let i = 0; i < fWidth; i++) {
     for (let j = 0; j < fHeight; j++) {
       const val = f[i][j];
-      if (val !== 0) {
+      if (val !== -1) {
         const [x, y] = getXYofFied(i, j);
         drawF(x, y, player[val].color);
       }
     }
   }
+}
+
+function drawUnit(u) {
+  const [x, y] = getXYofFied(u.i, u.j);
+  if (getType(u) === 'City') {
+    drawCity(x, y);
+  } else if (getType(u) === 'Man') {
+    drawMan(x, y);
+  }
+}
+
+function drawUnits() {
+  unit.forEach(u => {
+    drawUnit(u);
+  });
 }

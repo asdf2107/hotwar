@@ -24,6 +24,7 @@
         "no-plusplus": "off",
         "arrow-parens": "off",
         "no-shadow": "warn",
-        "max-classes-per-file": "off"
+        "max-classes-per-file": "off",
+        "linebreak-style": "off"
     }
 }
