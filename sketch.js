@@ -4,20 +4,12 @@ const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const unit = []; // man; tank; city; wall
 const player = []; // active palyers
 const buttons = [];
-let chosenUnit, action, activePlayer = 0;
+let chosenUnit, action /*When buying smth*/, activePlayerNum = 0;
 
 class Button {
   constructor(x, y, w, h, callback, scalable = false, col = undefined, text = '', priority = 0, group = 0) {
     buttons.push({
       x, y, w, h, callback, priority, group, scalable, col, text,
-    });
-  }
-
-  delGroup(n) {
-    buttons.forEach(b => {
-      if (b.group === n) {
-        buttons.splice(this.zones.indexOf(z));
-      }
     });
   }
 
@@ -34,6 +26,14 @@ class Button {
       act[0].callback();
     }
   }
+}
+
+function delGroup(n) {
+  buttons.forEach(b => {
+    if (b.group === n) {
+      buttons.splice(buttons.indexOf(b));
+    }
+  });
 }
 
 class Unit {
@@ -131,8 +131,8 @@ class Player {
   static nextTurn() {
     chosenUnit = undefined;
     action = undefined;
-    activePlayer = activePlayer === player.length - 1 ? 0 : ++activePlayer;
-    console.log(activePlayer);
+    activePlayerNum = activePlayerNum === player.length - 1 ? 0 : ++activePlayerNum;
+    console.log(activePlayerNum);
   }
 }
 
@@ -144,9 +144,14 @@ function fieldClick(i, j) {
   console.log(i, j);
   const u = Unit.getUnit(i, j);
   console.log(u);
-  if (getType(u) === 'City' && u.plr.id === activePlayer) {
+  if (getType(u) === 'City' && u.plr.id === activePlayerNum) {
     chosenUnit = u;
     showCityButtons(u);
+  }
+  else if (action !== undefined) {
+    // if (action.checkFn()) {
+    setActionUnit(i, j);
+    // }
   }
 }
 
@@ -191,11 +196,26 @@ function showCityButtons(u) {
 }
 
 function hideCityButtons() {
-  Button.delGroup(2);
+  delGroup(2);
 }
 
-function buyMan(u) {
-  
+function buyMan(city) {
+  console.log('bought');
+  action = { checkFn: lock(canSetCheck, () => true), u: new Man(0, 0, player[activePlayerNum]), city };
+}
+
+function canSetCheck(fCheck, i, j, ...fcArgs) {
+  if (fCheck(...fcArgs) && f[i][j] === activePlayerNum) {
+    return true;
+  }
+  return false;
+}
+
+function setActionUnit(i, j) {
+  action.u.i = i;
+  action.u.j = j;
+  unit.push(action.u);
+  action = undefined;
 }
 
 function getXYofFied(x, y) {
@@ -313,13 +333,14 @@ function drawSea(x, y) {
   drawF(x, y, 130, 160, 255);
 }
 
-function drawCity(x, y, plrNum) {
-  fill(100);
+function drawCity(x, y, plr) {
+  fill(plr.color);
   rect(x + fieldSize / 4, y + fieldSize / 5, fieldSize / 2, (fieldSize * 4) / 5);
 }
 
-function drawMan(x, y, plrNum) {
-  fill(50);
+function drawMan(x, y, plr) {
+
+  fill(plr.color);
   ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize / 2, fieldSize / 2);
 }
 
