@@ -25,6 +25,8 @@
         "arrow-parens": "off",
         "no-shadow": "warn",
         "max-classes-per-file": "off",
-        "linebreak-style": "off"
+        "linebreak-style": "off",
+        "max-len": "off",
+        "no-bitwise": "off"
     }
 }
