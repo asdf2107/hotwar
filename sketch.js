@@ -1,10 +1,15 @@
-const fWidth = 20, fHeight = 20, fieldSize = 30, offsetX = 50, offsetY = 50, fAlpha = 100;
+const fWidth = 16, fHeight = 16, fieldSize = 40, offsetX = 50, offsetY = 50, fAlpha = 100;
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const unit = []; // man; tank; city; wall
 const player = []; // active palyers
 const buttons = [];
-let chosenUnit, action /*When buying smth*/, activePlayerNum = 0;
+let action /* When buying smth */, activePlayerNum = 0;
+const actType = { // type of an action
+  CREATE: 'c',
+  MOVEATTACK: 'mt',
+  ATTACK: 't',
+};
 
 class Button {
   constructor(x, y, w, h, callback, scalable = false, col = undefined, text = '', priority = 0, group = 0) {
@@ -58,7 +63,7 @@ class Unit {
 
 class City extends Unit {
   constructor(i, j, plr) {
-    super(i, j, plr, 8);
+    super(i, j, plr, 5);
     this.level = 0;
     f[i][j] = plr.id;
     setAdj(i, j, plr.id);
@@ -129,9 +134,9 @@ class Player {
   }
 
   static nextTurn() {
-    chosenUnit = undefined;
     action = undefined;
     activePlayerNum = activePlayerNum === player.length - 1 ? 0 : ++activePlayerNum;
+    hideSideButtons();
     console.log(activePlayerNum);
   }
 }
@@ -141,17 +146,18 @@ const clickEvent = () => {
 };
 
 function fieldClick(i, j) {
-  console.log(i, j);
+  console.log(i, j, action);
   const u = Unit.getUnit(i, j);
   console.log(u);
+  hideSideButtons();
   if (getType(u) === 'City' && u.plr.id === activePlayerNum) {
-    chosenUnit = u;
     showCityButtons(u);
-  }
-  else if (action !== undefined) {
-    // if (action.checkFn()) {
-    setActionUnit(i, j);
-    // }
+  } else if (action !== undefined) {
+    if (action.checkFn(i, j)) {
+      performAct(i, j);
+    } else {
+      action = undefined;
+    }
   }
 }
 
@@ -161,8 +167,8 @@ function setup() {
   player.push(new Player(1, color(255, 0, 0, fAlpha)));
   initArr(f, -1);
   initArr(ter);
-  unit.push(new City(0, 0, player[0]));
-  unit.push(new City(fWidth - 1, fHeight - 1, player[1]));
+  unit.push(new City(1, 1, player[0]));
+  unit.push(new City(fWidth - 2, fHeight - 2, player[1]));
   player[0].conq(0, 0);
   player[1].conq(fWidth - 1, fHeight - 1);
   // console.log(f);
@@ -171,6 +177,7 @@ function setup() {
   const cnv = createCanvas(1000, 700);
   cnv.mouseClicked(clickEvent);
   showMainButtons();
+  strokeWeight(0);
 }
 
 
@@ -181,6 +188,23 @@ function draw() {
   drawBackgr();
   drawBorders();
   drawUnits();
+  updActionUnit();
+}
+
+
+function updActionUnit() {
+  if (action !== undefined) {
+    const [i, j] = getIJ(mouseX, mouseY);
+    if (isInBounds(i, j)) {
+      action.u.i = i;
+      action.u.j = j;
+      if (action.checkFn(i, j)) {
+        drawUnit(action.u);
+      } else {
+        drawCross(...getXY(i, j));
+      }
+    }
+  }
 }
 
 function showMainButtons() {
@@ -195,20 +219,39 @@ function showCityButtons(u) {
   buttons.push(new Button(width - 200, 100, 100, 50, lock(buyMan, u), false, color(255), 'man', 1, 2));
 }
 
-function hideCityButtons() {
+function hideSideButtons() {
   delGroup(2);
 }
 
 function buyMan(city) {
   console.log('bought');
-  action = { checkFn: lock(canSetCheck, () => true), u: new Man(0, 0, player[activePlayerNum]), city };
+  const m = new Man(0, 0, player[activePlayerNum]);
+  action = {
+    checkFn: lock(canSetCheck, canSetMan, m, city),
+    u: m,
+    aType: actType.CREATE,
+    city,
+  };
 }
 
-function canSetCheck(fCheck, i, j, ...fcArgs) {
-  if (fCheck(...fcArgs) && f[i][j] === activePlayerNum) {
+function canSetCheck(fCheck, u, param, i, j) {
+  if (fCheck(i, j, u, param) && f[i][j] === activePlayerNum && Unit.getUnit(i, j) === undefined) {
     return true;
   }
   return false;
+}
+
+function canSetMan(i, j, u, city) {
+  if (isAdj(city.i, city.j, i, j, 1) && ter[i][j] < 1) {
+    return true;
+  }
+  return false;
+}
+
+function performAct(i, j) {
+  if (action.aType === actType.CREATE) {
+    setActionUnit(i, j);
+  }
 }
 
 function setActionUnit(i, j) {
@@ -218,34 +261,45 @@ function setActionUnit(i, j) {
   action = undefined;
 }
 
-function getXYofFied(x, y) {
-  return [x * fieldSize + offsetX, y * fieldSize + offsetY];
+function getXY(i, j) {
+  return [i * fieldSize + offsetX, j * fieldSize + offsetY];
+}
+
+function getIJ(x, y) {
+  return [Math.round((x - offsetX) / fieldSize - 0.5), Math.round((y - offsetY) / fieldSize - 0.5)];
 }
 
 function initGridClick() {
   for (let i = 0; i < fWidth; i++) {
     for (let j = 0; j < fHeight; j++) {
-      const [x, y] = getXYofFied(i, j);
+      const [x, y] = getXY(i, j);
       buttons.push(new Button(x, y, fieldSize, fieldSize, lock(fieldClick, i, j), true));
     }
   }
   console.log(buttons);
 }
 
-const lock = (f, ...args) => () => f(...args);
+const lock = (f, ...args) => (...args2) => f(...args, ...args2);
 
 function initArr(arr, val = 0) {
   const ySlice = [];
   for (let i = 0; i < fHeight; i++) {
     ySlice.push(val);
   }
-  for (let i = 0; i < fHeight; i++) {
+  for (let i = 0; i < fWidth; i++) {
     arr.push(ySlice.slice());
   }
 }
 
 function isInArea(x0, y0, x, y, w, h) {
   if (x0 >= x && x0 <= x + w && y0 >= y && y0 <= y + h) {
+    return true;
+  }
+  return false;
+}
+
+function isInBounds(i, j) {
+  if (i >= 0 && j >= 0 && i < fWidth && j < fHeight) {
     return true;
   }
   return false;
@@ -285,7 +339,7 @@ function drawBackgr() {
   for (let i = 0; i < fWidth; i++) {
     for (let j = 0; j < fHeight; j++) {
       const val = ter[i][j];
-      const [x, y] = getXYofFied(i, j);
+      const [x, y] = getXY(i, j);
       if (val === 0) {
         drawGround(x, y);
       } else if (val === 1) {
@@ -325,7 +379,7 @@ function drawGround(x, y) {
 
 function drawMount(x, y) {
   drawGround(x, y);
-  fill(180);
+  fill(150);
   triangle(x + fieldSize / 2, y - fieldSize / 4, x, y + fieldSize, x + fieldSize, y + fieldSize);
 }
 
@@ -339,9 +393,16 @@ function drawCity(x, y, plr) {
 }
 
 function drawMan(x, y, plr) {
-
   fill(plr.color);
   ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize / 2, fieldSize / 2);
+}
+
+function drawCross(x, y) {
+  stroke(255, 0, 0, 50);
+  strokeWeight(6);
+  line(x, y, x + fieldSize, y + fieldSize);
+  line(x, y + fieldSize, x + fieldSize, y);
+  strokeWeight(0);
 }
 
 function drawBorders() {
@@ -349,7 +410,7 @@ function drawBorders() {
     for (let j = 0; j < fHeight; j++) {
       const val = f[i][j];
       if (val !== -1) {
-        const [x, y] = getXYofFied(i, j);
+        const [x, y] = getXY(i, j);
         drawF(x, y, player[val].color);
       }
     }
@@ -357,7 +418,7 @@ function drawBorders() {
 }
 
 function drawUnit(u) {
-  const [x, y] = getXYofFied(u.i, u.j);
+  const [x, y] = getXY(u.i, u.j);
   if (getType(u) === 'City') {
     drawCity(x, y, u.plr);
   } else if (getType(u) === 'Man') {
