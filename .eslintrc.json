@@ -27,6 +27,7 @@
         "max-classes-per-file": "off",
         "linebreak-style": "off",
         "max-len": "off",
-        "no-bitwise": "off"
+        "no-bitwise": "off",
+        "no-param-reassign": "warn"
     }
 }

@@ -1,4 +1,4 @@
-const fWidth = 16, fHeight = 16, fieldSize = 40, offsetX = 50, offsetY = 50, fAlpha = 100;
+const fWidth = 6, fHeight = 6, fieldSize = 80, offsetX = 50, offsetY = 50, fAlpha = 100;
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const unit = []; // man; tank; city; wall
@@ -9,6 +9,7 @@ const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
   ATTACK: 't',
+  MOVE: 'm',
 };
 
 class Button {
@@ -42,12 +43,17 @@ function delGroup(n) {
 }
 
 class Unit {
-  constructor(i, j, plr, maxHp, hp = maxHp) {
+  constructor(i, j, plr, maxHp, moveRange = -1, fireRange = -1, damage = -1, maxEnergy = -1) {
     this.i = i;
     this.j = j;
     this.plr = plr;
-    this.hp = hp;
+    this.moveRange = moveRange;
+    this.fireRange = fireRange;
+    this.damage = damage;
+    this.hp = maxHp;
     this.maxHp = maxHp;
+    this.energy = maxEnergy;
+    this.maxEnergy = maxEnergy;
   }
 
   static getUnit(i, j) {
@@ -59,34 +65,38 @@ class Unit {
     });
     return res;
   }
+
+  harm(hp) {
+    this.hp -= hp;
+  }
 }
 
 class City extends Unit {
   constructor(i, j, plr) {
-    super(i, j, plr, 5);
+    super(i, j, plr, 5, -1, -1);
     this.level = 0;
     f[i][j] = plr.id;
-    setAdj(i, j, plr.id);
+    setAdj(i, j, plr.id, f);
   }
 }
 
 class Man extends Unit {
   constructor(i, j, plr) {
-    super(i, j, plr, 8);
+    super(i, j, plr, 2, 0, 1, 1, 3);
   }
 }
 
-function setAdj(i, j, val, ifClear = true) {
+function setAdj(i, j, val, arr, ifClear = true) {
   for (let p = -1; p <= 1; p++) {
     for (let q = -1; q <= 1; q++) {
-      if (f[i + p] !== undefined && f[i + p][j + q] !== undefined && (!ifClear || f[i + p][j + q] === -1)) {
-        f[i + p][j + q] = val;
+      if (arr[i + p] !== undefined && arr[i + p][j + q] !== undefined && (!ifClear || arr[i + p][j + q] === -1)) {
+        arr[i + p][j + q] = val;
       }
     }
   }
 }
 
-function isAdj(i0, j0, i, j, d = 0, noCenter = true) { // d: 0 - cross [4]; 1 - square [8] (setAdj); 2 - phombus [12]
+function isAdj(i0, j0, d, i, j, noCenter = true) { // d: 0 - cross [4]; 1 - square [8] (setAdj); 2 - phombus [12]
   if (noCenter && i === i0 && j === j0) {
     return false;
   }
@@ -104,7 +114,7 @@ function isAdj(i0, j0, i, j, d = 0, noCenter = true) { // d: 0 - cross [4]; 1 - 
       return true;
     }
   } else {
-    throw new Error('isAdj: invalid argument "d"');
+    throw new Error(`isAdj: invalid argument "d" (${d})`);
   }
   return false;
 }
@@ -146,18 +156,21 @@ const clickEvent = () => {
 };
 
 function fieldClick(i, j) {
-  console.log(i, j, action);
   const u = Unit.getUnit(i, j);
-  console.log(u);
+  console.log(i, j, action, u);
   hideSideButtons();
-  if (getType(u) === 'City' && u.plr.id === activePlayerNum) {
-    showCityButtons(u);
-  } else if (action !== undefined) {
+  if (action !== undefined) {
     if (action.checkFn(i, j)) {
       performAct(i, j);
+    } else if (action.checkFn0 !== undefined && action.checkFn0(i, j)) {
+      performAct(i, j, true);
     } else {
       action = undefined;
     }
+  } else if (getType(u) === 'City' && u.plr.id === activePlayerNum) {
+    showCityButtons(u);
+  } else if (getType(u) === 'Man' && u.plr.id === activePlayerNum) {
+    fireMoveUnit(u);
   }
 }
 
@@ -188,6 +201,7 @@ function draw() {
   drawBackgr();
   drawBorders();
   drawUnits();
+  drawHps();
   updActionUnit();
 }
 
@@ -196,9 +210,13 @@ function updActionUnit() {
   if (action !== undefined) {
     const [i, j] = getIJ(mouseX, mouseY);
     if (isInBounds(i, j)) {
-      action.u.i = i;
-      action.u.j = j;
+      if (action.aType === actType.CREATE) {
+        action.u.i = i;
+        action.u.j = j;
+      }
       if (action.checkFn(i, j)) {
+        drawUnit(action.u);
+      } else if (action.checkFn0 !== undefined && action.checkFn0(i, j)) {
         drawUnit(action.u);
       } else {
         drawCross(...getXY(i, j));
@@ -234,6 +252,39 @@ function buyMan(city) {
   };
 }
 
+function moveUnit(u) { // if movable unit is clicked
+  action = {
+    checkFn: lock(canMove, u.i, u.j, u.moveRange),
+    u,
+    aType: actType.MOVE,
+  };
+}
+
+function fireMoveUnit(u) { // if fireable unit is clicked
+  action = {
+    checkFn: lock(canMove, u.i, u.j, u.moveRange),
+    checkFn0: lock(canFire, u.i, u.j, u.fireRange),
+    u,
+    aType: actType.MOVEATTACK,
+  };
+}
+
+function canMove(i0, j0, range, i, j, floats = false) {
+  if (isAdj(i0, j0, range, i, j) && Unit.getUnit(i, j) === undefined && (ter[i][j] === 0 || (floats && ter[i][j] === 2))) {
+    return true;
+  }
+  return false;
+}
+
+function canFire(i0, j0, range, i, j) {
+  const enm = Unit.getUnit(i, j);
+  if (isAdj(i0, j0, range, i, j) && enm !== undefined && enm.plr.id !== activePlayerNum) {
+    return true;
+  }
+  console.log('cant fire');
+  return false;
+}
+
 function canSetCheck(fCheck, u, param, i, j) {
   if (fCheck(i, j, u, param) && f[i][j] === activePlayerNum && Unit.getUnit(i, j) === undefined) {
     return true;
@@ -242,22 +293,42 @@ function canSetCheck(fCheck, u, param, i, j) {
 }
 
 function canSetMan(i, j, u, city) {
-  if (isAdj(city.i, city.j, i, j, 1) && ter[i][j] < 1) {
+  if (isAdj(city.i, city.j, 1, i, j) && ter[i][j] < 1) {
     return true;
   }
   return false;
 }
 
-function performAct(i, j) {
+function performAct(i, j, func0 = false) {
   if (action.aType === actType.CREATE) {
     setActionUnit(i, j);
+  } else if (action.aType === actType.MOVE) {
+    setActionUnit(i, j, false);
+    player[activePlayerNum].conq(i, j);
+  } else if (action.aType === actType.MOVEATTACK) {
+    if (func0) { // attack
+      attackFromUnit(i, j);
+    } else { // move
+      setActionUnit(i, j, false);
+      player[activePlayerNum].conq(i, j);
+    }
   }
 }
 
-function setActionUnit(i, j) {
+function setActionUnit(i, j, addToUnits = true) { // sets current action unit to given position
   action.u.i = i;
   action.u.j = j;
-  unit.push(action.u);
+  if (addToUnits) {
+    unit.push(action.u);
+  }
+  action.u.energy -= 1;
+  action = undefined;
+}
+
+function attackFromUnit(i, j) {
+  const enm = Unit.getUnit(i, j);
+  enm.harm(action.u.damage);
+  action.u.energy -= 1;
   action = undefined;
 }
 
@@ -402,6 +473,27 @@ function drawCross(x, y) {
   strokeWeight(6);
   line(x, y, x + fieldSize, y + fieldSize);
   line(x, y + fieldSize, x + fieldSize, y);
+  strokeWeight(0);
+}
+
+function drawHps() {
+  unit.forEach(u => {
+    drawHp(...getXY(u.i, u.j), u.hp, u.maxHp);
+  });
+}
+
+function drawHp(x, y, hp, max) {
+  const interval = 5, len = 2, h = 2;
+  const d = (points) => {
+    for (let i = 0; i < points; i++) {
+      line((interval + len) * i + x + interval, y + fieldSize - h, (interval + len) * (i + 1) + x, y + fieldSize - h);
+    }
+  };
+  stroke(160);
+  strokeWeight(5);
+  d(max);
+  stroke(255);
+  d(hp);
   strokeWeight(0);
 }
 
