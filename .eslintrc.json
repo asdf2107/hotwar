@@ -28,6 +28,7 @@
         "linebreak-style": "off",
         "max-len": "off",
         "no-bitwise": "off",
-        "no-param-reassign": "warn"
+        "no-param-reassign": "warn",
+        "no-lonely-if": "warn"
     }
 }
