@@ -1,10 +1,10 @@
-const fWidth = 10, fHeight = 10, fieldSize = 60, offsetX = 50, offsetY = 50, fAlpha = 100;
+const fWidth = 12, fHeight = 12, fieldSize = 50, offsetX = 50, offsetY = 50, fAlpha = 100;
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
 const players = []; // active palyers
 const buttons = [];
-let action /* When buying smth */, actPlNum = 1;
+let action, actPlNum = 1;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -13,7 +13,11 @@ const actType = { // type of an action
 };
 const priceList = {
   city: 100,
+  fort: 15,
+  farm: 10,
   man: 10,
+  tank: 30,
+  cityRepair: 15,
 };
 
 class Button {
@@ -85,16 +89,32 @@ class Unit {
 
 class City extends Unit {
   constructor(i, j, plr) {
-    super(i, j, plr, 5, -1, -1, -1, 5, priceList.city);
+    super(i, j, plr, 6, -1, -1, -1, 6, priceList.city);
     this.level = 0;
-    f[i][j] = plr.id;
-    setAdj(i, j, plr.id, f);
+  }
+}
+
+class Fort extends Unit {
+  constructor(i, j, plr) {
+    super(i, j, plr, 4, -1, -1, -1, 0, priceList.fort);
+  }
+}
+
+class Farm extends Unit {
+  constructor(i, j, plr) {
+    super(i, j, plr, 1, -1, -1, -1, 0, priceList.farm);
   }
 }
 
 class Man extends Unit {
   constructor(i, j, plr) {
     super(i, j, plr, 2, 0, 1, 1, 3, priceList.man);
+  }
+}
+
+class Tank extends Unit {
+  constructor(i, j, plr) {
+    super(i, j, plr, 4, 2, 1, 2, 2, priceList.tank);
   }
 }
 
@@ -141,6 +161,15 @@ function getType(u) {
   if (u instanceof Man) {
     return 'Man';
   }
+  if (u instanceof Tank) {
+    return 'Tank';
+  }
+  if (u instanceof Fort) {
+    return 'Fort';
+  }
+  if (u instanceof Farm) {
+    return 'Farm';
+  }
   throw new Error('Unit child not added to getType!');
 }
 
@@ -166,13 +195,21 @@ class Player {
 }
 
 function addMoney() {
-  let cities = 0;
+  players[actPlNum].money += getEarnings();
+}
+
+function getEarnings() {
+  let cities = 0, farms = 0;
   units.forEach(u => {
-    if (u.plr.id === actPlNum && getType(u) === 'City') {
-      ++cities;
+    if (u.plr.id === actPlNum) {
+      if (getType(u) === 'City') {
+        ++cities;
+      } else if (getType(u) === 'Farm') {
+        ++farms;
+      }
     }
   });
-  players[actPlNum].money += cities * 5;
+  return cities * 5 + farms * 2;
 }
 
 const clickEvent = () => {
@@ -193,7 +230,7 @@ function fieldClick(i, j) {
     }
   } else if (getType(u) === 'City' && u.plr.id === actPlNum) {
     showCityButtons(u);
-  } else if (getType(u) === 'Man' && u.plr.id === actPlNum) {
+  } else if ((getType(u) === 'Man' || getType(u) === 'Tank') && u.plr.id === actPlNum) {
     fireMoveUnit(u);
   }
 }
@@ -206,8 +243,10 @@ function setup() {
   initArr(ter);
   units.push(new City(1, 1, players[0]));
   units.push(new City(fWidth - 2, fHeight - 2, players[1]));
-  players[0].conq(0, 0);
-  players[1].conq(fWidth - 1, fHeight - 1);
+  players[0].conq(1, 1);
+  setAdj(1, 1, 0, f);
+  players[1].conq(fWidth - 2, fHeight - 2);
+  setAdj(fWidth - 2, fHeight - 2, 1, f);
   // console.log(f);
   genTerrain();
   initGridClick();
@@ -230,24 +269,37 @@ function draw() {
   drawHps();
   drawEnrgs();
   drawMainInfo();
-  updActionUnit();
+  drawActionZones();
 }
 
 
-function updActionUnit() {
+function drawActionZones() {
   if (action !== undefined) {
-    const [i, j] = getIJ(mouseX, mouseY);
-    if (isInBounds(i, j)) {
+    for (let i = 0; i < fWidth; i++) {
+      for (let j = 0; j < fHeight; j++) {
+        if (action.zones[i][j] === 1) {
+          drawCanMove(getXY(i, j)[0], getXY(i, j)[1]);
+        } else if (action.zones[i][j] === 2) {
+          drawCanAttack(getXY(i, j)[0], getXY(i, j)[1]);
+        }
+      }
+    }
+  }
+}
+
+function updateActionZones() {
+  action.zones = []; // 1 - can move, 2 - can attack
+  initArr(action.zones);
+  for (let i = 0; i < fWidth; i++) {
+    for (let j = 0; j < fHeight; j++) {
       if (action.aType === actType.CREATE) {
         action.u.i = i;
         action.u.j = j;
       }
       if (action.fnCrMv(i, j)) {
-        drawCanMove(...getXY(i, j));
+        action.zones[i][j] = 1;
       } else if (action.fnAtt !== undefined && action.fnAtt(i, j)) {
-        drawCanAttack(...getXY(i, j));
-      } else {
-        drawCross(...getXY(i, j));
+        action.zones[i][j] = 2;
       }
     }
   }
@@ -272,10 +324,14 @@ function nextTurn() {
 function showCityButtons(u) {
   hideNonCityButtons();
   buttons.push(new Button(width - 300, 80, 250, 50, lock(buyMan, u), false, color(255), `man ${priceList.man}$`, 1, 2));
+  buttons.push(new Button(width - 300, 150, 250, 50, lock(buyTank, u), false, color(255), `tank ${priceList.tank}$`, 1, 2));
+  buttons.push(new Button(width - 300, 220, 250, 50, lock(repairCity, u), false, color(255), `repair ${priceList.cityRepair}$`, 1, 2));
 }
 
 function showNonCityButtons() {
-  buttons.push(new Button(width - 300, 80, 250, 50, buyCity, false, color(255), `city ${priceList.city}$`, 1, 3));
+  buttons.push(new Button(width - 300, 80, 250, 50, lock(buyOnTer, new City(0, 0, players[actPlNum])), false, color(255), `city ${priceList.city}$`, 1, 3));
+  buttons.push(new Button(width - 300, 150, 250, 50, lock(buyOnTer, new Fort(0, 0, players[actPlNum])), false, color(255), `fort ${priceList.fort}$`, 1, 3));
+  buttons.push(new Button(width - 300, 220, 250, 50, lock(buyOnTer, new Farm(0, 0, players[actPlNum])), false, color(255), `farm ${priceList.farm}$`, 1, 3));
 }
 
 function hideCityButtons() {
@@ -287,24 +343,42 @@ function hideNonCityButtons() {
   delGroup(3);
 }
 
+function repairCity(c) {
+  if (c.hp < c.maxHp && players[actPlNum].money >= priceList.cityRepair) {
+    players[actPlNum].money -= priceList.cityRepair;
+    ++c.hp;
+  }
+}
+
 function buyMan(city) {
-  console.log('bought');
   const m = new Man(0, 0, players[actPlNum]);
   action = {
-    fnCrMv: lock(canSetCheck, canSetMan, true, m, city),
+    fnCrMv: lock(canSetCheck, canSetNearCity, true, m, city),
     u: m,
     aType: actType.CREATE,
     city,
   };
+  updateActionZones();
 }
 
-function buyCity() {
-  const c = new City(0, 0, players[actPlNum]);
+function buyTank(city) {
+  const t = new Tank(0, 0, players[actPlNum]);
   action = {
-    fnCrMv: lock(canSetCheck, () => true, true, c, undefined),
-    u: c,
+    fnCrMv: lock(canSetCheck, canSetNearCity, true, t, city),
+    u: t,
+    aType: actType.CREATE,
+    city,
+  };
+  updateActionZones();
+}
+
+function buyOnTer(u) {
+  action = {
+    fnCrMv: lock(canSetCheck, () => true, true, u, undefined),
+    u,
     aType: actType.CREATE,
   };
+  updateActionZones();
 }
 
 function moveUnit(u) { // if movable unit is clicked
@@ -313,6 +387,7 @@ function moveUnit(u) { // if movable unit is clicked
     u,
     aType: actType.MOVE,
   };
+  updateActionZones();
 }
 
 function fireMoveUnit(u) { // if fireable unit is clicked
@@ -322,6 +397,7 @@ function fireMoveUnit(u) { // if fireable unit is clicked
     u,
     aType: actType.MOVEATTACK,
   };
+  updateActionZones();
 }
 
 function canMove(i0, j0, range, i, j, floats = false) {
@@ -347,7 +423,7 @@ function canSetCheck(fCheck, u, groundOnly, param, i, j) {
   return false;
 }
 
-function canSetMan(i, j, u, city) {
+function canSetNearCity(i, j, u, city) {
   if (isAdj(city.i, city.j, 1, i, j)) {
     return true;
   }
@@ -511,7 +587,7 @@ function drawF(x, y, ...col) {
 }
 
 function drawGround(x, y) {
-  drawF(x, y, 108, 194, 97);
+  drawF(x, y, 142, 209, 79);
 }
 
 function drawMount(x, y) {
@@ -529,9 +605,24 @@ function drawCity(x, y, plr) {
   rect(x + fieldSize / 4, y + fieldSize / 5, fieldSize / 2, (fieldSize * 4) / 5);
 }
 
+function drawFort(x, y, plr) {
+  fill(170);
+  rect(x + fieldSize / 4, y + fieldSize / 2, fieldSize / 2, (fieldSize) / 3);
+}
+
+function drawFarm(x, y, plr) {
+  fill(230, 230, 140);
+  rect(x + fieldSize / 3, y + fieldSize / 2, fieldSize / 3, fieldSize / 3);
+}
+
 function drawMan(x, y, plr) {
   fill(plr.color);
   ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize / 2, fieldSize / 2);
+}
+
+function drawTank(x, y, plr) {
+  fill(plr.color);
+  ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize * (3 / 4), fieldSize * (3 / 4));
 }
 
 function drawCanMove(x, y) {
@@ -577,7 +668,7 @@ function drawMainInfo() {
   fill(getBrightColor(players[actPlNum].color));
   text(`Player ${actPlNum + 1}`, width - 300, height - 300, 250, 50);
   fill('gold');
-  text(`${players[actPlNum].money} $`, width - 300, height - 260, 250, 50);
+  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 260, 250, 50);
 }
 
 function getBrightColor(c) { // optimize
@@ -615,10 +706,17 @@ function drawBorders() {
 
 function drawUnit(u) {
   const [x, y] = getXY(u.i, u.j);
-  if (getType(u) === 'City') {
+  const type = getType(u);
+  if (type === 'City') {
     drawCity(x, y, u.plr);
-  } else if (getType(u) === 'Man') {
+  } else if (type === 'Man') {
     drawMan(x, y, u.plr);
+  } else if (type === 'Tank') {
+    drawTank(x, y, u.plr);
+  } else if (type === 'Fort') {
+    drawFort(x, y, u.plr);
+  } else if (type === 'Farm') {
+    drawFarm(x, y, u.plr);
   }
 }
 
