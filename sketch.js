@@ -344,9 +344,10 @@ function hideNonCityButtons() {
 }
 
 function repairCity(c) {
-  if (c.hp < c.maxHp && players[actPlNum].money >= priceList.cityRepair) {
+  if (c.hp < c.maxHp && players[actPlNum].money >= priceList.cityRepair && c.energy >= 1) {
     players[actPlNum].money -= priceList.cityRepair;
     ++c.hp;
+    --c.energy;
   }
 }
 
@@ -432,9 +433,12 @@ function canSetNearCity(i, j, u, city) {
 
 function performAct(i, j, fnAtt = false) {
   if (action.aType === actType.CREATE) {
-    if (players[actPlNum].money >= action.u.price) {
+    if (players[actPlNum].money >= action.u.price && (action.city === undefined || action.city.energy >= 2)) {
       players[actPlNum].money -= action.u.price;
       action.u.energy = 0;
+      if (action.city !== undefined) {
+        action.city.energy -= 2;
+      }
       setActionUnit(i, j);
     }
   } else if (action.aType === actType.MOVE) {
@@ -534,14 +538,16 @@ function getHighestPr(arr) {
   return res;
 }
 
-function genTerrain() { // Make Perlin noise (later)
+function genTerrain() {
+  const noiseScale = 0.4;
   for (let i = 0; i < fWidth; i++) {
     for (let j = 0; j < fHeight; j++) {
-      const r = random(0, 100);
-      if (r > 90) {
-        ter[i][j] = 1;
-      } else if (r > 70) {
+      const n = noise(i * noiseScale, j * noiseScale);
+      const r = random();
+      if (n < 0.37) {
         ter[i][j] = 2;
+      } else if (r > 0.86) {
+        ter[i][j] = 1;
       }
     }
   }
