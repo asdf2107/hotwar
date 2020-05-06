@@ -1,4 +1,4 @@
-const fWidth = 12, fHeight = 12, fieldSize = 50, offsetX = 50, offsetY = 50, fAlpha = 100;
+const fWidth = 12, fHeight = 12, fieldSize = 48, offsetX = 50, offsetY = 50, fAlpha = 100;
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
@@ -19,6 +19,7 @@ const priceList = {
   tank: 30,
   cityRepair: 15,
 };
+const textures = {};
 
 class Button {
   constructor(x, y, w, h, callback, scalable = false, col = undefined, text = '', priority = 0, group = 0) {
@@ -151,6 +152,21 @@ function isAdj(i0, j0, d, i, j, noCenter = true) { // d: 0 - cross [4]; 1 - squa
   return false;
 }
 
+function getAdj(d, i, j, noCenter = true) { // d: 0 - cross [4]; 1 - square [8] (setAdj); 2 - phombus [12]
+  const res = [];
+  for (let it = 0; it < fWidth; it++) {
+    for (let jt = 0; jt < fHeight; jt++) {
+      if (isAdj(it, jt, d, i, j, noCenter)) {
+        res.push({
+          i: it,
+          j: jt,
+        });
+      }
+    }
+  }
+  return res;
+}
+
 function getType(u) {
   if (!(u instanceof Unit)) {
     return undefined;
@@ -186,8 +202,10 @@ class Player {
 
   static nextTurn() {
     action = undefined;
+    autoCaptureMountsSeas();
     actPlNum = actPlNum === players.length - 1 ? 0 : ++actPlNum;
-    hideCityButtons();
+    clearSideButtons();
+    showNonCityButtons();
     refillEnergy();
     addMoney();
     console.log(actPlNum);
@@ -199,17 +217,19 @@ function addMoney() {
 }
 
 function getEarnings() {
-  let cities = 0, farms = 0;
+  let cities = 0, farms = 0, army = 0;
   units.forEach(u => {
     if (u.plr.id === actPlNum) {
       if (getType(u) === 'City') {
         ++cities;
       } else if (getType(u) === 'Farm') {
         ++farms;
+      } else if (getType(u) === 'Man' || getType(u) === 'Tank') {
+        ++army;
       }
     }
   });
-  return cities * 5 + farms * 2;
+  return cities * 10 + farms * 2 - army;
 }
 
 const clickEvent = () => {
@@ -219,7 +239,8 @@ const clickEvent = () => {
 function fieldClick(i, j) {
   const u = Unit.getUnit(i, j);
   console.log(i, j, action, u);
-  hideCityButtons();
+  clearSideButtons();
+  showNonCityButtons();
   if (action !== undefined) {
     if (action.fnCrMv(i, j)) {
       performAct(i, j);
@@ -237,6 +258,7 @@ function fieldClick(i, j) {
 
 // eslint-disable-next-line no-unused-vars
 function setup() {
+  loadTextures();
   players.push(new Player(0, color(0, 0, 255, fAlpha)));
   players.push(new Player(1, color(255, 0, 0, fAlpha)));
   initArr(f, -1);
@@ -244,11 +266,12 @@ function setup() {
   units.push(new City(1, 1, players[0]));
   units.push(new City(fWidth - 2, fHeight - 2, players[1]));
   players[0].conq(1, 1);
-  setAdj(1, 1, 0, f);
   players[1].conq(fWidth - 2, fHeight - 2);
-  setAdj(fWidth - 2, fHeight - 2, 1, f);
-  // console.log(f);
   genTerrain();
+  setAdj(1, 1, 0, f);
+  setAdj(fWidth - 2, fHeight - 2, 1, f);
+  setAdj(1, 1, 0, ter, false);
+  setAdj(fWidth - 2, fHeight - 2, 0, ter, false);
   initGridClick();
   const cnv = createCanvas(1000, 700);
   cnv.mouseClicked(clickEvent);
@@ -261,6 +284,7 @@ function setup() {
 
 // eslint-disable-next-line no-unused-vars
 function draw() {
+  noSmooth();
   background(0);
   drawButtons();
   drawBackgr();
@@ -270,6 +294,7 @@ function draw() {
   drawEnrgs();
   drawMainInfo();
   drawActionZones();
+  //drawTestImg();
 }
 
 
@@ -313,6 +338,33 @@ function refillEnergy() {
   });
 }
 
+function autoCaptureMountsSeas() {
+  for (let i = 0; i < fWidth; i++) {
+    for (let j = 0; j < fHeight; j++) {
+      if (f[i][j] === -1 && ter[i][j] > 0) {
+        getAdj(0, i, j).forEach(el => {
+          if (f[el.i][el.j] > -1 && ter[el.i][el.j] < 1) {
+            f[i][j] = f[el.i][el.j];
+          }
+        });
+      }
+    }
+  }
+}
+
+function loadTextures() {
+  loadTexture('city');
+  loadTexture('ground0');
+  loadTexture('ground1');
+  loadTexture('mount0');
+  loadTexture('mount1');
+  loadTexture('water0');
+}
+
+function loadTexture(name) {
+  textures[name] = loadImage(`textures/${name}.png`);
+}
+
 function showMainButtons() {
   buttons.push(new Button(width - 300, height - 100, 250, 50, nextTurn, false, color(255), 'END TURN', 1, 1));
 }
@@ -322,25 +374,21 @@ function nextTurn() {
 }
 
 function showCityButtons(u) {
-  hideNonCityButtons();
+  clearSideButtons();
   buttons.push(new Button(width - 300, 80, 250, 50, lock(buyMan, u), false, color(255), `man ${priceList.man}$`, 1, 2));
   buttons.push(new Button(width - 300, 150, 250, 50, lock(buyTank, u), false, color(255), `tank ${priceList.tank}$`, 1, 2));
   buttons.push(new Button(width - 300, 220, 250, 50, lock(repairCity, u), false, color(255), `repair ${priceList.cityRepair}$`, 1, 2));
 }
 
 function showNonCityButtons() {
-  buttons.push(new Button(width - 300, 80, 250, 50, lock(buyOnTer, new City(0, 0, players[actPlNum])), false, color(255), `city ${priceList.city}$`, 1, 3));
-  buttons.push(new Button(width - 300, 150, 250, 50, lock(buyOnTer, new Fort(0, 0, players[actPlNum])), false, color(255), `fort ${priceList.fort}$`, 1, 3));
-  buttons.push(new Button(width - 300, 220, 250, 50, lock(buyOnTer, new Farm(0, 0, players[actPlNum])), false, color(255), `farm ${priceList.farm}$`, 1, 3));
+  clearSideButtons();
+  buttons.push(new Button(width - 300, 80, 250, 50, lock(buyOnTer, new City(0, 0, players[actPlNum])), false, color(255), `city ${priceList.city}$`, 1, 2));
+  buttons.push(new Button(width - 300, 150, 250, 50, lock(buyOnTer, new Fort(0, 0, players[actPlNum])), false, color(255), `fort ${priceList.fort}$`, 1, 2));
+  buttons.push(new Button(width - 300, 220, 250, 50, lock(buyOnTer, new Farm(0, 0, players[actPlNum])), false, color(255), `farm ${priceList.farm}$`, 1, 2));
 }
 
-function hideCityButtons() {
+function clearSideButtons() {
   delGroup(2);
-  showNonCityButtons();
-}
-
-function hideNonCityButtons() {
-  delGroup(3);
 }
 
 function repairCity(c) {
@@ -553,6 +601,13 @@ function genTerrain() {
   }
 }
 
+function rand01(seed) {
+  if (seed % 5 === 0 || seed % 6 === 0 || seed % 11 === 0) {
+    return 0;
+  }
+  return 1;
+}
+
 // DRAW
 function drawBackgr() {
   for (let i = 0; i < fWidth; i++) {
@@ -593,22 +648,36 @@ function drawF(x, y, ...col) {
 }
 
 function drawGround(x, y) {
-  drawF(x, y, 142, 209, 79);
+  const r = rand01(x + fWidth * y);
+  if (r === 1) {
+    image(textures.ground0, x, y, fieldSize, fieldSize);
+  } else {
+    image(textures.ground1, x, y, fieldSize, fieldSize);
+  }
+  // drawF(x, y, 142, 209, 79);
 }
 
 function drawMount(x, y) {
   drawGround(x, y);
-  fill(150);
-  triangle(x + fieldSize / 2, y - fieldSize / 4, x, y + fieldSize, x + fieldSize, y + fieldSize);
+  const r = rand01(x + fWidth * y);
+  if (r === 1) {
+    image(textures.mount0, x, y, fieldSize, fieldSize);
+  } else {
+    image(textures.mount1, x, y, fieldSize, fieldSize);
+  }
+  // fill(150);
+  // triangle(x + fieldSize / 2, y - fieldSize / 4, x, y + fieldSize, x + fieldSize, y + fieldSize);
 }
 
 function drawSea(x, y) {
-  drawF(x, y, 130, 160, 255);
+  image(textures.water0, x, y, fieldSize, fieldSize);
+  // drawF(x, y, 130, 160, 255);
 }
 
 function drawCity(x, y, plr) {
   fill(plr.color);
-  rect(x + fieldSize / 4, y + fieldSize / 5, fieldSize / 2, (fieldSize * 4) / 5);
+  image(textures.city, x, y, fieldSize, fieldSize);
+  // rect(x + fieldSize / 4, y + fieldSize / 5, fieldSize / 2, (fieldSize * 4) / 5);
 }
 
 function drawFort(x, y, plr) {
@@ -662,11 +731,11 @@ function drawEnrgs() {
 }
 
 function drawHp(x, y, hp, max) {
-  drawBar(x, y, hp, max, color(255), 2);
+  drawBar(x, y - 2, hp, max, color(255));
 }
 
 function drawEnrg(x, y, hp, max) {
-  drawBar(x, y, hp, max, color(100, 180, 255), 8);
+  drawBar(x, y - 9, hp, max, color(100, 180, 255));
 }
 
 function drawMainInfo() {
@@ -683,19 +752,17 @@ function getBrightColor(c) { // optimize
   return color(rgb[0], rgb[1], rgb[2], 255);
 }
 
-function drawBar(x, y, val, max, col, h) {
-  const interval = 5, len = 2;
+function drawBar(x, y, val, max, col) {
+  const interval = 3, len = 4, hh = 4;
   const d = (points) => {
     for (let i = 0; i < points; i++) {
-      line((interval + len) * i + x + interval, y + fieldSize - h, (interval + len) * (i + 1) + x, y + fieldSize - h);
+      rect((interval + len) * i + x + interval, y + fieldSize, len, hh);
     }
   };
-  stroke(160);
-  strokeWeight(5);
+  fill(160);
   d(max);
-  stroke(col);
+  fill(col);
   d(val);
-  strokeWeight(0);
 }
 
 function drawBorders() {
