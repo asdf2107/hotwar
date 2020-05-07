@@ -4,7 +4,7 @@ const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
 const players = []; // active palyers
 const buttons = [];
-let action, actPlNum = 1;
+let action, actPlNum = 1, frame = 0;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -286,6 +286,7 @@ function setup() {
 function draw() {
   noSmooth();
   background(0);
+  animate();
   drawButtons();
   drawBackgr();
   drawBorders();
@@ -297,6 +298,41 @@ function draw() {
   //drawTestImg();
 }
 
+const changeRate = 50;
+function animate() {
+  ++frame;
+  if (frame >= changeRate * 3) {
+    setTexture('water', 2);
+    frame = 0;
+  } else if (frame >= changeRate * 2) {
+    setTexture('water', 1);
+  } else if (frame >= changeRate) {
+    setTexture('water', 0);
+  }
+}
+
+function loadTextures() {
+  loadTexture('city');
+  loadTexture('fort');
+  loadTexture('farm0');
+  loadTexture('farm1');
+  loadTexture('ground0');
+  loadTexture('ground1');
+  loadTexture('mount0');
+  loadTexture('mount1');
+  loadTexture('water0');
+  loadTexture('water1');
+  loadTexture('water2');
+  setTexture('water');
+}
+
+function loadTexture(name) {
+  textures[name] = loadImage(`textures/${name}.png`);
+}
+
+function setTexture(name, val = 0) {
+  textures[name] = textures[name + val];
+}
 
 function drawActionZones() {
   if (action !== undefined) {
@@ -350,19 +386,6 @@ function autoCaptureMountsSeas() {
       }
     }
   }
-}
-
-function loadTextures() {
-  loadTexture('city');
-  loadTexture('ground0');
-  loadTexture('ground1');
-  loadTexture('mount0');
-  loadTexture('mount1');
-  loadTexture('water0');
-}
-
-function loadTexture(name) {
-  textures[name] = loadImage(`textures/${name}.png`);
 }
 
 function showMainButtons() {
@@ -619,7 +642,7 @@ function drawBackgr() {
       } else if (val === 1) {
         drawMount(x, y);
       } else if (val === 2) {
-        drawSea(x, y);
+        drawWater(x, y);
       }
     }
   }
@@ -669,25 +692,32 @@ function drawMount(x, y) {
   // triangle(x + fieldSize / 2, y - fieldSize / 4, x, y + fieldSize, x + fieldSize, y + fieldSize);
 }
 
-function drawSea(x, y) {
-  image(textures.water0, x, y, fieldSize, fieldSize);
+function drawWater(x, y) {
+  image(textures.water, x, y, fieldSize, fieldSize);
   // drawF(x, y, 130, 160, 255);
 }
 
 function drawCity(x, y, plr) {
-  fill(plr.color);
   image(textures.city, x, y, fieldSize, fieldSize);
+  //  fill(plr.color);
   // rect(x + fieldSize / 4, y + fieldSize / 5, fieldSize / 2, (fieldSize * 4) / 5);
 }
 
 function drawFort(x, y, plr) {
-  fill(170);
-  rect(x + fieldSize / 4, y + fieldSize / 2, fieldSize / 2, (fieldSize) / 3);
+  image(textures.fort, x, y, fieldSize, fieldSize);
+  // fill(170);
+  // rect(x + fieldSize / 4, y + fieldSize / 2, fieldSize / 2, (fieldSize) / 3);
 }
 
 function drawFarm(x, y, plr) {
-  fill(230, 230, 140);
-  rect(x + fieldSize / 3, y + fieldSize / 2, fieldSize / 3, fieldSize / 3);
+  const r = rand01(x + fWidth * y);
+  if (r === 1) {
+    image(textures.farm0, x, y, fieldSize, fieldSize);
+  } else {
+    image(textures.farm1, x, y, fieldSize, fieldSize);
+  }
+  // fill(230, 230, 140);
+  // rect(x + fieldSize / 3, y + fieldSize / 2, fieldSize / 3, fieldSize / 3);
 }
 
 function drawMan(x, y, plr) {
