@@ -1,10 +1,10 @@
-const fWidth = 12, fHeight = 12, fieldSize = 48, offsetX = 50, offsetY = 50, fAlpha = 100;
+const fWidth = 12, fHeight = 12, fAlpha = 100;
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
 const players = []; // active palyers
 const buttons = [];
-let action, actPlNum = 1, frame = 0;
+let action, actPlNum = 1, frame = 0, offsetX = 10, offsetY = 10, fieldSize = 48;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -17,21 +17,39 @@ const priceList = {
   farm: 10,
   man: 10,
   tank: 30,
-  cityRepair: 15,
+  repairCity: 15,
+  repairMan: 5,
+  repairTank: 10,
+  repairFort: 10,
+  repairFarm: 0,
 };
 const textures = {};
 
 class Button {
-  constructor(x, y, w, h, callback, scalable = false, col = undefined, text = '', priority = 0, group = 0) {
-    buttons.push({
-      x, y, w, h, callback, priority, group, scalable, col, text,
-    });
+  constructor(callback, x, y, w = 0, h = 0, scalable = false, col = undefined, text = '', priority = 0, group = 0) {
+    this.callback = callback;
+    this.i = -1;
+    this.j = -1;
+    this.x = x;
+    this.y = y;
+    this.w = w;
+    this.h = h;
+    this.scalable = scalable;
+    this.col = col;
+    this.text = text;
+    this.priority = priority;
+    this.group = group;
+    buttons.push(this);
   }
 
   static onClick() {
     const act = [];
+    console.log(fieldSize);
     buttons.forEach((zone) => {
-      if (isInArea(mouseX, mouseY, zone.x, zone.y, zone.w, zone.h)) {
+      console.log(zone.i, zone.j, ...getXY(zone.i, zone.j));
+      if (zone.scalable === true && isInArea(mouseX, mouseY, ...getXY(zone.i, zone.j), fieldSize, fieldSize)) {
+        act.push(zone);
+      } else if (zone.scalable === false && isInArea(mouseX, mouseY, zone.x, zone.y, zone.w, zone.h)) {
         act.push(zone);
       }
     });
@@ -53,6 +71,7 @@ function delGroup(n) {
 
 class Unit {
   constructor(i, j, plr, maxHp, moveRange = -1, fireRange = -1, damage = -1, maxEnergy = -1, price = 0) {
+    this.id = newId();
     this.i = i;
     this.j = j;
     this.plr = plr;
@@ -79,13 +98,34 @@ class Unit {
   harm(hp) {
     this.hp -= hp;
     if (this.hp <= 0) {
-      this.selfdestruct();
+      destruct(this);
     }
   }
+}
 
-  selfdestruct() {
-    units.splice(units.indexOf(this), 1);
+function destruct(u) {
+  for (let i = 0; i < units.length; i++) {
+    if (units[i].id === u.id) {
+      units.splice(i, 1);
+    }
   }
+  action = undefined;
+  showNonCityButtons();
+}
+
+function newId() {
+  for (let i = 0; i < 2000; i++) {
+    let taken = false;
+    units.forEach(u => {
+      if (u.id === i) {
+        taken = true;
+      }
+    });
+    if (!taken) {
+      return i;
+    }
+  }
+  throw new Error('too many units! (newId)');
 }
 
 class City extends Unit {
@@ -250,9 +290,13 @@ function fieldClick(i, j) {
       action = undefined;
     }
   } else if (getType(u) === 'City' && u.plr.id === actPlNum) {
+    showBasicUnitButtons(u);
     showCityButtons(u);
   } else if ((getType(u) === 'Man' || getType(u) === 'Tank') && u.plr.id === actPlNum) {
+    showBasicUnitButtons(u);
     fireMoveUnit(u);
+  } else if (getType(u) !== undefined && u.plr.id === actPlNum) {
+    showBasicUnitButtons(u);
   }
 }
 
@@ -273,7 +317,8 @@ function setup() {
   setAdj(1, 1, 0, ter, false);
   setAdj(fWidth - 2, fHeight - 2, 0, ter, false);
   initGridClick();
-  const cnv = createCanvas(1000, 700);
+  const cnv = createCanvas(windowWidth, windowHeight);
+  setStartLocation();
   cnv.mouseClicked(clickEvent);
   showMainButtons();
   strokeWeight(0);
@@ -284,18 +329,26 @@ function setup() {
 
 // eslint-disable-next-line no-unused-vars
 function draw() {
+  dragScrn();
   noSmooth();
   background(0);
   animate();
-  drawButtons();
   drawBackgr();
   drawBorders();
   drawUnits();
   drawHps();
   drawEnrgs();
-  drawMainInfo();
   drawActionZones();
-  //drawTestImg();
+  drawButtons();
+  drawMainInfo();
+}
+
+function setStartLocation() {
+  fieldSize = Math.floor(windowHeight / fHeight) - 2;
+  const startOffsetX = Math.abs((width - 300 - fieldSize * fWidth) / 2) - 1;
+  if (startOffsetX > 0) {
+    offsetX = startOffsetX;
+  }
 }
 
 const changeRate = 50;
@@ -308,6 +361,21 @@ function animate() {
     setTexture('water', 1);
   } else if (frame >= changeRate) {
     setTexture('water', 0);
+  }
+}
+
+let dragging = false;
+function dragScrn() {
+  if (mouseIsPressed && dragging) {
+    // eslint-disable-next-line no-undef
+    offsetX += movedX;
+    // eslint-disable-next-line no-undef
+    offsetY += movedY;
+    // eslint-disable-next-line no-undef
+  } else if (mouseIsPressed && (Math.abs(movedX) > 5 || Math.abs(movedY) > 5)) {
+    dragging = true;
+  } else {
+    dragging = false;
   }
 }
 
@@ -383,42 +451,67 @@ function autoCaptureMountsSeas() {
             f[i][j] = f[el.i][el.j];
           }
         });
+      } else if (ter[i][j] > 0) {
+        const captrd = f[i][j];
+        let found = false;
+        getAdj(0, i, j).forEach(el => {
+          if (f[el.i][el.j] === captrd && ter[el.i][el.j] < 1) {
+            found = true;
+          }
+        });
+        if (!found) {
+          f[i][j] = -1;
+        }
       }
     }
   }
 }
 
+// eslint-disable-next-line no-unused-vars
+function mouseWheel(event) {
+  fieldSize -= Math.floor(event.delta);
+  if (fieldSize < 4) {
+    fieldSize = 4;
+  }
+  return false;
+}
+
 function showMainButtons() {
-  buttons.push(new Button(width - 300, height - 100, 250, 50, nextTurn, false, color(255), 'END TURN', 1, 1));
+  buttons.push(new Button(nextTurn, width - 300, height - 100, 250, 50, false, color(255), 'END TURN', 1, 1));
 }
 
 function nextTurn() {
   Player.nextTurn();
 }
 
-function showCityButtons(u) {
+function showBasicUnitButtons(u) {
   clearSideButtons();
-  buttons.push(new Button(width - 300, 80, 250, 50, lock(buyMan, u), false, color(255), `man ${priceList.man}$`, 1, 2));
-  buttons.push(new Button(width - 300, 150, 250, 50, lock(buyTank, u), false, color(255), `tank ${priceList.tank}$`, 1, 2));
-  buttons.push(new Button(width - 300, 220, 250, 50, lock(repairCity, u), false, color(255), `repair ${priceList.cityRepair}$`, 1, 2));
+  buttons.push(new Button(lock(destruct, u), width - 300, 50, 250, 50, false, color(255), 'delete', 1, 2));
+  buttons.push(new Button(lock(repairUnit, u), width - 300, 150, 250, 50, false, color(255), `repair ${priceList[`repair${getType(u)}`]}$`, 1, 2));
+}
+
+function showCityButtons(u) {
+  buttons.push(new Button(lock(buyMan, u), width - 300, 220, 250, 50, false, color(255), `man ${priceList.man}$`, 1, 2));
+  buttons.push(new Button(lock(buyTank, u), width - 300, 290, 250, 50, false, color(255), `tank ${priceList.tank}$`, 1, 2));
 }
 
 function showNonCityButtons() {
   clearSideButtons();
-  buttons.push(new Button(width - 300, 80, 250, 50, lock(buyOnTer, new City(0, 0, players[actPlNum])), false, color(255), `city ${priceList.city}$`, 1, 2));
-  buttons.push(new Button(width - 300, 150, 250, 50, lock(buyOnTer, new Fort(0, 0, players[actPlNum])), false, color(255), `fort ${priceList.fort}$`, 1, 2));
-  buttons.push(new Button(width - 300, 220, 250, 50, lock(buyOnTer, new Farm(0, 0, players[actPlNum])), false, color(255), `farm ${priceList.farm}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new City(0, 0, players[actPlNum])), width - 300, 80, 250, 50, false, color(255), `city ${priceList.city}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new Fort(0, 0, players[actPlNum])), width - 300, 150, 250, 50, false, color(255), `fort ${priceList.fort}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new Farm(0, 0, players[actPlNum])), width - 300, 220, 250, 50, false, color(255), `farm ${priceList.farm}$`, 1, 2));
 }
 
 function clearSideButtons() {
   delGroup(2);
 }
 
-function repairCity(c) {
-  if (c.hp < c.maxHp && players[actPlNum].money >= priceList.cityRepair && c.energy >= 1) {
-    players[actPlNum].money -= priceList.cityRepair;
-    ++c.hp;
-    --c.energy;
+function repairUnit(u) {
+  const price = priceList[`repair${getType(u)}`];
+  if (u.hp < u.maxHp && players[actPlNum].money >= price && u.energy >= 1) {
+    players[actPlNum].money -= price;
+    ++u.hp;
+    --u.energy;
   }
 }
 
@@ -560,8 +653,10 @@ function getIJ(x, y) {
 function initGridClick() {
   for (let i = 0; i < fWidth; i++) {
     for (let j = 0; j < fHeight; j++) {
-      const [x, y] = getXY(i, j);
-      buttons.push(new Button(x, y, fieldSize, fieldSize, lock(fieldClick, i, j), true));
+      const b = new Button(lock(fieldClick, i, j), 0, 0, 0, 0, true);
+      b.i = i;
+      b.j = j;
+      buttons.push(b);
     }
   }
   console.log(buttons);
@@ -580,7 +675,9 @@ function initArr(arr, val = 0) {
 }
 
 function isInArea(x0, y0, x, y, w, h) {
-  if (x0 >= x && x0 <= x + w && y0 >= y && y0 <= y + h) {
+  console.log(x0, y0, x, y, w, h);
+  if (x0 >= x && x0 < x + w && y0 >= y && y0 < y + h) {
+    console.log('true');
     return true;
   }
   return false;
@@ -624,7 +721,8 @@ function genTerrain() {
   }
 }
 
-function rand01(seed) {
+function rand01(v1, v2 = 0) {
+  const seed = v1 + v2 * fWidth;
   if (seed % 5 === 0 || seed % 6 === 0 || seed % 11 === 0) {
     return 0;
   }
@@ -671,7 +769,7 @@ function drawF(x, y, ...col) {
 }
 
 function drawGround(x, y) {
-  const r = rand01(x + fWidth * y);
+  const r = rand01(...getIJ(x, y));
   if (r === 1) {
     image(textures.ground0, x, y, fieldSize, fieldSize);
   } else {
@@ -682,7 +780,7 @@ function drawGround(x, y) {
 
 function drawMount(x, y) {
   drawGround(x, y);
-  const r = rand01(x + fWidth * y);
+  const r = rand01(...getIJ(x, y));
   if (r === 1) {
     image(textures.mount0, x, y, fieldSize, fieldSize);
   } else {
@@ -710,7 +808,7 @@ function drawFort(x, y, plr) {
 }
 
 function drawFarm(x, y, plr) {
-  const r = rand01(x + fWidth * y);
+  const r = rand01(...getIJ(x, y));
   if (r === 1) {
     image(textures.farm0, x, y, fieldSize, fieldSize);
   } else {
