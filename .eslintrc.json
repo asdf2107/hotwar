@@ -29,6 +29,7 @@
         "max-len": "off",
         "no-bitwise": "off",
         "no-param-reassign": "warn",
-        "no-lonely-if": "warn"
+        "no-lonely-if": "warn",
+        "prefer-destructuring": "off"
     }
 }

@@ -4,7 +4,7 @@ const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
 const players = []; // active palyers
 const buttons = [];
-let action, actPlNum = 1, frame = 0, offsetX = 10, offsetY = 10, fieldSize = 48;
+let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10, fieldSize = 48, tick = 0;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -18,15 +18,56 @@ const priceList = {
   man: 10,
   tank: 30,
   repairCity: 15,
-  repairMan: 5,
-  repairTank: 10,
+  repairMan: 8,
+  repairTank: 12,
   repairFort: 10,
   repairFarm: 0,
 };
-const textures = {};
+const textures = {}, sounds = {}, animations = [];
+
+
+class Animation {
+  constructor(i, j, images, changeRate, repeatable = false) {
+    this.id = newId();
+    this.i = i;
+    this.j = j;
+    this.images = images;
+    this.imgIndex = 0;
+    this.counter = 0;
+    this.changeRate = changeRate;
+    this.repeatable = repeatable;
+  }
+
+  draw() {
+    const [x, y] = getXY(this.i, this.j);
+    image(this.images[this.imgIndex], x, y, fieldSize, fieldSize);
+  }
+
+  addCounter() {
+    if (this.counter >= this.changeRate - 1) {
+      this.counter = 0;
+      if (this.imgIndex === this.images.length - 1 && !this.repeatable) {
+        destruct(this, animations);
+      } else if (this.imgIndex === this.images.length - 1 && this.repeatable) {
+        this.imgIndex = 0;
+      } else {
+        ++this.imgIndex;
+      }
+    } else {
+      this.counter += deltaTime;
+    }
+  }
+}
+
+function animate() {
+  animations.forEach(a => {
+    a.draw();
+    a.addCounter();
+  });
+}
 
 class Button {
-  constructor(callback, x, y, w = 0, h = 0, scalable = false, col = undefined, text = '', priority = 0, group = 0) {
+  constructor(callback, x, y, w = 0, h = 0, scalable = false, col = undefined, text = '', priority = 0, group = 0, sound = sounds.click) {
     this.callback = callback;
     this.i = -1;
     this.j = -1;
@@ -39,6 +80,7 @@ class Button {
     this.text = text;
     this.priority = priority;
     this.group = group;
+    this.sound = sound;
     buttons.push(this);
   }
 
@@ -53,11 +95,14 @@ class Button {
         act.push(zone);
       }
     });
+    let b;
     if (act.length > 1) {
-      getHighestPr(act).callback();
+      b = getHighestPr(act);
     } else if (act.length === 1) {
-      act[0].callback();
+      b = act[0];
     }
+    b.sound.play();
+    b.callback();
   }
 }
 
@@ -98,19 +143,23 @@ class Unit {
   harm(hp) {
     this.hp -= hp;
     if (this.hp <= 0) {
-      destruct(this);
+      destructUnit(this);
     }
   }
 }
 
-function destruct(u) {
-  for (let i = 0; i < units.length; i++) {
-    if (units[i].id === u.id) {
-      units.splice(i, 1);
-    }
-  }
+function destructUnit(u) {
+  destruct(u, units);
   action = undefined;
   showNonCityButtons();
+}
+
+function destruct(el, arr) {
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].id === el.id) {
+      arr.splice(i, 1);
+    }
+  }
 }
 
 function newId() {
@@ -301,8 +350,13 @@ function fieldClick(i, j) {
 }
 
 // eslint-disable-next-line no-unused-vars
-function setup() {
+function preload() {
   loadTextures();
+  loadSounds();
+}
+
+// eslint-disable-next-line no-unused-vars
+function setup() {
   players.push(new Player(0, color(0, 0, 255, fAlpha)));
   players.push(new Player(1, color(255, 0, 0, fAlpha)));
   initArr(f, -1);
@@ -324,6 +378,7 @@ function setup() {
   strokeWeight(0);
   Player.nextTurn();
   showNonCityButtons();
+  sounds.themeMelody0.loop();
 }
 
 
@@ -332,12 +387,13 @@ function draw() {
   dragScrn();
   noSmooth();
   background(0);
-  animate();
+  animateWater();
   drawBackgr();
   drawBorders();
   drawUnits();
   drawHps();
   drawEnrgs();
+  animate();
   drawActionZones();
   drawButtons();
   drawMainInfo();
@@ -351,15 +407,15 @@ function setStartLocation() {
   }
 }
 
-const changeRate = 50;
-function animate() {
-  ++frame;
-  if (frame >= changeRate * 3) {
+const changeRate = 1000;
+function animateWater() {
+  waterTime += deltaTime;
+  if (waterTime >= changeRate * 3) {
     setTexture('water', 2);
-    frame = 0;
-  } else if (frame >= changeRate * 2) {
+    waterTime = 0;
+  } else if (waterTime >= changeRate * 2) {
     setTexture('water', 1);
-  } else if (frame >= changeRate) {
+  } else if (waterTime >= changeRate) {
     setTexture('water', 0);
   }
 }
@@ -391,7 +447,34 @@ function loadTextures() {
   loadTexture('water0');
   loadTexture('water1');
   loadTexture('water2');
+  loadTexture('man0p0');
+  loadTexture('man0p1');
+  loadTexture('tank0p0');
+  loadTexture('tank0p1');
+  loadTexture('blast0');
+  loadTexture('blast1');
+  loadTexture('blast2');
+  loadTexture('blast3');
+  loadTexture('blast4');
+  loadTexture('blast5');
+  loadTexture('blast6');
   setTexture('water');
+  textures.blasts = [];
+  for (let i = 0; i < 7; i++) {
+    textures.blasts.push(textures[`blast${i}`]);
+  }
+}
+
+function loadSounds() {
+  soundFormats('wav');
+  loadSoundl('click');
+  loadSoundl('bang');
+  loadSoundl('themeMelody0');
+  sounds.themeMelody0.setVolume(0.3);
+}
+
+function loadSoundl(name) {
+  sounds[name] = loadSound(`sounds/${name}.wav`);
 }
 
 function loadTexture(name) {
@@ -486,7 +569,7 @@ function nextTurn() {
 
 function showBasicUnitButtons(u) {
   clearSideButtons();
-  buttons.push(new Button(lock(destruct, u), width - 300, 50, 250, 50, false, color(255), 'delete', 1, 2));
+  buttons.push(new Button(lock(destructUnit, u), width - 300, 50, 250, 50, false, color(255), 'delete', 1, 2));
   buttons.push(new Button(lock(repairUnit, u), width - 300, 150, 250, 50, false, color(255), `repair ${priceList[`repair${getType(u)}`]}$`, 1, 2));
 }
 
@@ -615,6 +698,8 @@ function performAct(i, j, fnAtt = false) {
     if (fnAtt) { // attack
       if (action.u.energy > 1) {
         action.u.energy -= 2;
+        sounds.bang.play();
+        animations.push(new Animation(i, j, textures.blasts, 150));
         attackFromUnit(i, j);
       }
     } else { // move
@@ -819,13 +904,15 @@ function drawFarm(x, y, plr) {
 }
 
 function drawMan(x, y, plr) {
-  fill(plr.color);
-  ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize / 2, fieldSize / 2);
+  image(textures[`man0p${plr.id}`], x, y, fieldSize, fieldSize);
+  // fill(plr.color);
+  // ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize / 2, fieldSize / 2);
 }
 
 function drawTank(x, y, plr) {
-  fill(plr.color);
-  ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize * (3 / 4), fieldSize * (3 / 4));
+  image(textures[`tank0p${plr.id}`], x, y, fieldSize, fieldSize);
+  // fill(plr.color);
+  // ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize * (3 / 4), fieldSize * (3 / 4));
 }
 
 function drawCanMove(x, y) {
