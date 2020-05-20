@@ -1,10 +1,12 @@
-const fWidth = 12, fHeight = 12, fAlpha = 100;
+'use strict';
+
+const fWidth = 12, fHeight = 12, fAlpha = 100, sideButWidth = 30, sidePadWidth = 350;
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
 const players = []; // active palyers
 const buttons = [];
-let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10, fieldSize = 48, tick = 0;
+let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10, fieldSize = 48, sidePadOpen = true, sideButton;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -16,14 +18,14 @@ const priceList = {
   fort: 15,
   farm: 10,
   man: 10,
-  tank: 30,
+  tank: 40,
   repairCity: 15,
   repairMan: 8,
-  repairTank: 12,
+  repairTank: 15,
   repairFort: 10,
   repairFarm: 0,
 };
-const textures = {}, sounds = {}, animations = [];
+const textures = {}, sounds = {}, fonts = {}, animations = [];
 
 
 class Animation {
@@ -69,6 +71,7 @@ function animate() {
 class Button {
   constructor(callback, x, y, w = 0, h = 0, scalable = false, col = undefined, text = '', priority = 0, group = 0, sound = sounds.click) {
     this.callback = callback;
+    this.enabled = true;
     this.i = -1;
     this.j = -1;
     this.x = x;
@@ -87,12 +90,14 @@ class Button {
   static onClick() {
     const act = [];
     console.log(fieldSize);
-    buttons.forEach((zone) => {
+    buttons.forEach(zone => {
       console.log(zone.i, zone.j, ...getXY(zone.i, zone.j));
-      if (zone.scalable === true && isInArea(mouseX, mouseY, ...getXY(zone.i, zone.j), fieldSize, fieldSize)) {
-        act.push(zone);
-      } else if (zone.scalable === false && isInArea(mouseX, mouseY, zone.x, zone.y, zone.w, zone.h)) {
-        act.push(zone);
+      if (zone.enabled) {
+        if (zone.scalable === true && isInArea(mouseX, mouseY, ...getXY(zone.i, zone.j), fieldSize, fieldSize)) {
+          act.push(zone);
+        } else if (zone.scalable === false && isInArea(mouseX, mouseY, zone.x, zone.y, zone.w, zone.h)) {
+          act.push(zone);
+        }
       }
     });
     let b;
@@ -101,15 +106,24 @@ class Button {
     } else if (act.length === 1) {
       b = act[0];
     }
-    b.sound.play();
-    b.callback();
+    try {
+      b.sound.play();
+      b.callback();
+    } catch { };
   }
 }
 
-function delGroup(n) {
+function delGroup(n, c) {
+  function cb(b) {
+    buttons.splice(buttons.indexOf(b), c);
+  }
+  eachInGroup(n, cb);
+}
+
+function eachInGroup(n, callback) {
   buttons.forEach(b => {
     if (b.group === n) {
-      buttons.splice(buttons.indexOf(b));
+      callback(b);
     }
   });
 }
@@ -323,13 +337,14 @@ function getEarnings() {
 
 const clickEvent = () => {
   Button.onClick();
+  console.log(buttons);
 };
 
 function fieldClick(i, j) {
   const u = Unit.getUnit(i, j);
   console.log(i, j, action, u);
+  console.log(buttons);
   clearSideButtons();
-  showNonCityButtons();
   if (action !== undefined) {
     if (action.fnCrMv(i, j)) {
       performAct(i, j);
@@ -346,6 +361,8 @@ function fieldClick(i, j) {
     fireMoveUnit(u);
   } else if (getType(u) !== undefined && u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
+  } else {
+    showNonCityButtons();
   }
 }
 
@@ -353,6 +370,7 @@ function fieldClick(i, j) {
 function preload() {
   loadTextures();
   loadSounds();
+  loadFonts();
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -377,7 +395,8 @@ function setup() {
   showMainButtons();
   strokeWeight(0);
   Player.nextTurn();
-  showNonCityButtons();
+  sideButton = new Button(lock(sidePadClick, this), width - sidePadWidth - sideButWidth, 0, sideButWidth, height, false, color(255), '>', 3, 3);
+  buttons.push(sideButton);
   sounds.themeMelody0.loop();
 }
 
@@ -395,8 +414,11 @@ function draw() {
   drawEnrgs();
   animate();
   drawActionZones();
+  if (sidePadOpen) {
+    drawSidePad();
+    drawMainInfo();
+  }
   drawButtons();
-  drawMainInfo();
 }
 
 function setStartLocation() {
@@ -471,6 +493,10 @@ function loadSounds() {
   loadSoundl('bang');
   loadSoundl('themeMelody0');
   sounds.themeMelody0.setVolume(0.3);
+}
+
+function loadFonts() {
+  fonts.mainFont = loadFont('fonts/FFFFORWA.TTF');
 }
 
 function loadSoundl(name) {
@@ -559,34 +585,72 @@ function mouseWheel(event) {
   return false;
 }
 
-function showMainButtons() {
-  buttons.push(new Button(nextTurn, width - 300, height - 100, 250, 50, false, color(255), 'END TURN', 1, 1));
-}
-
 function nextTurn() {
   Player.nextTurn();
 }
 
+function showMainButtons() {
+  buttons.push(new Button(nextTurn, width - 300, height - 100, 250, 50, false, color(255), 'END TURN', 2, 2));
+  hideSideIfNeed();
+}
+
 function showBasicUnitButtons(u) {
-  clearSideButtons();
-  buttons.push(new Button(lock(destructUnit, u), width - 300, 50, 250, 50, false, color(255), 'delete', 1, 2));
-  buttons.push(new Button(lock(repairUnit, u), width - 300, 150, 250, 50, false, color(255), `repair ${priceList[`repair${getType(u)}`]}$`, 1, 2));
+  clearSideButtons()
+  buttons.push(new Button(lock(destructUnit, u), width - 300, 50, 250, 50, false, color(255), 'delete', 2, 2));
+  buttons.push(new Button(lock(repairUnit, u), width - 300, 150, 250, 50, false, color(255), `repair ${priceList[`repair${getType(u)}`]}$`, 2, 2));
+  hideSideIfNeed();
 }
 
 function showCityButtons(u) {
-  buttons.push(new Button(lock(buyMan, u), width - 300, 220, 250, 50, false, color(255), `man ${priceList.man}$`, 1, 2));
-  buttons.push(new Button(lock(buyTank, u), width - 300, 290, 250, 50, false, color(255), `tank ${priceList.tank}$`, 1, 2));
+  buttons.push(new Button(lock(buyMan, u), width - 300, 220, 250, 50, false, color(255), `man ${priceList.man}$`, 2, 2));
+  buttons.push(new Button(lock(buyTank, u), width - 300, 290, 250, 50, false, color(255), `tank ${priceList.tank}$`, 2, 2));
+  hideSideIfNeed();
+
 }
 
 function showNonCityButtons() {
-  clearSideButtons();
+  clearSideButtons()
   buttons.push(new Button(lock(buyOnTer, new City(0, 0, players[actPlNum])), width - 300, 80, 250, 50, false, color(255), `city ${priceList.city}$`, 1, 2));
   buttons.push(new Button(lock(buyOnTer, new Fort(0, 0, players[actPlNum])), width - 300, 150, 250, 50, false, color(255), `fort ${priceList.fort}$`, 1, 2));
   buttons.push(new Button(lock(buyOnTer, new Farm(0, 0, players[actPlNum])), width - 300, 220, 250, 50, false, color(255), `farm ${priceList.farm}$`, 1, 2));
+  hideSideIfNeed();
+  showMainButtons()
 }
 
 function clearSideButtons() {
-  delGroup(2);
+  delGroup(2, 2);
+}
+
+function hideSideIfNeed(always = false) {
+  if (!sidePadOpen || always) {
+    eachInGroup(2, b => {
+      b.enabled = false;
+    });
+  }
+}
+
+function openSidePad() {
+  sidePadOpen = true;
+  clearSideButtons();
+  showNonCityButtons();
+}
+
+function closeSidePad() {
+  sidePadOpen = false;
+}
+
+function sidePadClick(b) {
+  console.log(b);
+  if (!sidePadOpen) {
+    sideButton.x = width - sidePadWidth - sideButWidth;
+    sideButton.text = '>';
+    openSidePad();
+  } else {
+    closeSidePad();
+    sideButton.x = width - sideButWidth;
+    sideButton.text = '<';
+  }
+  hideSideIfNeed();
 }
 
 function repairUnit(u) {
@@ -705,6 +769,9 @@ function performAct(i, j, fnAtt = false) {
     } else { // move
       if (action.u.energy > 0) {
         players[actPlNum].conq(i, j);
+        if (getType(action.u) === 'Tank') {
+          setAdj(i, j, actPlNum, f, true);
+        }
         action.u.energy -= 1;
         setActionUnit(i, j, false);
       }
@@ -831,6 +898,11 @@ function drawBackgr() {
   }
 }
 
+function drawSidePad() {
+  fill(100);
+  rect(width - sidePadWidth, 0, sidePadWidth, height);
+}
+
 function drawButtons() {
   buttons.forEach(b => {
     if (b.col !== undefined) {
@@ -840,12 +912,15 @@ function drawButtons() {
 }
 
 function drawButton(b) {
-  textSize(32);
-  textAlign(CENTER, CENTER);
-  fill(b.col);
-  rect(b.x, b.y, b.w, b.h);
-  fill(0);
-  text(b.text, b.x, b.y, b.w, b.h);
+  if (b.enabled) {
+    textSize(32);
+    textAlign(CENTER, CENTER);
+    textFont(fonts.mainFont);
+    fill(b.col);
+    rect(b.x, b.y, b.w, b.h);
+    fill(0);
+    text(b.text, b.x, b.y, b.w, b.h);
+  }
 }
 
 function drawF(x, y, ...col) {
@@ -958,7 +1033,7 @@ function drawMainInfo() {
   fill(getBrightColor(players[actPlNum].color));
   text(`Player ${actPlNum + 1}`, width - 300, height - 300, 250, 50);
   fill('gold');
-  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 260, 250, 50);
+  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 250, 250, 50);
 }
 
 function getBrightColor(c) { // optimize
