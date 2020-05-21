@@ -1,10 +1,14 @@
-const fWidth = 12, fHeight = 12, fAlpha = 100;
+'use strict';
+
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
 const players = []; // active palyers
 const buttons = [];
-let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10, fieldSize = 48, tick = 0;
+const fWidth = 12, fHeight = 12, fAlpha = 100, sideButWidth = 30,
+  sidePadWidth = 350;
+let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10,
+  fieldSize = 48, sidePadOpen = true, sideButton;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -16,15 +20,16 @@ const priceList = {
   fort: 15,
   farm: 10,
   man: 10,
-  tank: 30,
+  tank: 40,
   repairCity: 15,
   repairMan: 8,
-  repairTank: 12,
+  repairTank: 15,
   repairFort: 10,
   repairFarm: 0,
 };
-const textures = {}, sounds = {}, animations = [];
+const textures = {}, sounds = {}, fonts = {}, animations = [];
 
+const lock = (f, ...args) => (...args2) => f(...args, ...args2);
 
 class Animation {
   constructor(i, j, images, changeRate, repeatable = false) {
@@ -67,8 +72,10 @@ function animate() {
 }
 
 class Button {
-  constructor(callback, x, y, w = 0, h = 0, scalable = false, col = undefined, text = '', priority = 0, group = 0, sound = sounds.click) {
+  constructor(callback, x, y, w = 0, h = 0, scalable = false,
+    col = undefined, text = '', priority = 0, group = 0, sound = sounds.click) {
     this.callback = callback;
+    this.enabled = true;
     this.i = -1;
     this.j = -1;
     this.x = x;
@@ -87,12 +94,27 @@ class Button {
   static onClick() {
     const act = [];
     console.log(fieldSize);
-    buttons.forEach((zone) => {
+    buttons.forEach(zone => {
       console.log(zone.i, zone.j, ...getXY(zone.i, zone.j));
-      if (zone.scalable === true && isInArea(mouseX, mouseY, ...getXY(zone.i, zone.j), fieldSize, fieldSize)) {
-        act.push(zone);
-      } else if (zone.scalable === false && isInArea(mouseX, mouseY, zone.x, zone.y, zone.w, zone.h)) {
-        act.push(zone);
+      if (zone.enabled) {
+        if (zone.scalable === true && isInArea(
+          mouseX,
+          mouseY,
+          ...getXY(zone.i, zone.j),
+          fieldSize,
+          fieldSize
+        )) {
+          act.push(zone);
+        } else if (zone.scalable === false && isInArea(
+          mouseX,
+          mouseY,
+          zone.x,
+          zone.y,
+          zone.w,
+          zone.h
+        )) {
+          act.push(zone);
+        }
       }
     });
     let b;
@@ -101,21 +123,31 @@ class Button {
     } else if (act.length === 1) {
       b = act[0];
     }
-    b.sound.play();
-    b.callback();
+    try {
+      b.sound.play();
+      b.callback();
+    } catch {}
   }
 }
 
-function delGroup(n) {
+function delGroup(n, c) {
+  function cb(b) {
+    buttons.splice(buttons.indexOf(b), c);
+  }
+  eachInGroup(n, cb);
+}
+
+function eachInGroup(n, callback) {
   buttons.forEach(b => {
     if (b.group === n) {
-      buttons.splice(buttons.indexOf(b));
+      callback(b);
     }
   });
 }
 
 class Unit {
-  constructor(i, j, plr, maxHp, moveRange = -1, fireRange = -1, damage = -1, maxEnergy = -1, price = 0) {
+  constructor(i, j, plr, maxHp, moveRange = -1, fireRange = -1,
+    damage = -1, maxEnergy = -1, price = 0) {
     this.id = newId();
     this.i = i;
     this.j = j;
@@ -211,19 +243,22 @@ class Tank extends Unit {
 function setAdj(i, j, val, arr, ifClear = true) {
   for (let p = -1; p <= 1; p++) {
     for (let q = -1; q <= 1; q++) {
-      if (arr[i + p] !== undefined && arr[i + p][j + q] !== undefined && (!ifClear || arr[i + p][j + q] === -1)) {
+      if (arr[i + p] !== undefined && arr[i + p][j + q] !== undefined &&
+        (!ifClear || arr[i + p][j + q] === -1)) {
         arr[i + p][j + q] = val;
       }
     }
   }
 }
 
-function isAdj(i0, j0, d, i, j, noCenter = true) { // d: 0 - cross [4]; 1 - square [8] (setAdj); 2 - phombus [12]
+// d: 0-cross[4];1-square[8];2-rhombus[12]
+function isAdj(i0, j0, d, i, j, noCenter = true) {
   if (noCenter && i === i0 && j === j0) {
     return false;
   }
   if (d === 0) {
-    if ((Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) === 0) || (Math.abs(j0 - j) <= 1 && Math.abs(i0 - i) === 0)) {
+    if ((Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) === 0) ||
+    (Math.abs(j0 - j) <= 1 && Math.abs(i0 - i) === 0)) {
       return true;
     }
   } else if (d === 1) {
@@ -231,8 +266,9 @@ function isAdj(i0, j0, d, i, j, noCenter = true) { // d: 0 - cross [4]; 1 - squa
       return true;
     }
   } else if (d === 2) {
-    if (((Math.abs(i0 - i) <= 2 && Math.abs(j0 - j) === 0) || (Math.abs(j0 - j) <= 2 && Math.abs(i0 - i) === 0))
-    || (Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) <= 1)) {
+    if (((Math.abs(i0 - i) <= 2 && Math.abs(j0 - j) === 0) ||
+    (Math.abs(j0 - j) <= 2 && Math.abs(i0 - i) === 0)) ||
+    (Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) <= 1)) {
       return true;
     }
   } else {
@@ -241,7 +277,8 @@ function isAdj(i0, j0, d, i, j, noCenter = true) { // d: 0 - cross [4]; 1 - squa
   return false;
 }
 
-function getAdj(d, i, j, noCenter = true) { // d: 0 - cross [4]; 1 - square [8] (setAdj); 2 - phombus [12]
+// d: 0-cross[4];1-square[8];2-rhombus[12]
+function getAdj(d, i, j, noCenter = true) {
   const res = [];
   for (let it = 0; it < fWidth; it++) {
     for (let jt = 0; jt < fHeight; jt++) {
@@ -323,13 +360,14 @@ function getEarnings() {
 
 const clickEvent = () => {
   Button.onClick();
+  console.log(buttons);
 };
 
 function fieldClick(i, j) {
   const u = Unit.getUnit(i, j);
   console.log(i, j, action, u);
+  console.log(buttons);
   clearSideButtons();
-  showNonCityButtons();
   if (action !== undefined) {
     if (action.fnCrMv(i, j)) {
       performAct(i, j);
@@ -341,11 +379,14 @@ function fieldClick(i, j) {
   } else if (getType(u) === 'City' && u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
     showCityButtons(u);
-  } else if ((getType(u) === 'Man' || getType(u) === 'Tank') && u.plr.id === actPlNum) {
+  } else if ((getType(u) === 'Man' || getType(u) === 'Tank') &&
+    u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
     fireMoveUnit(u);
   } else if (getType(u) !== undefined && u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
+  } else {
+    showNonCityButtons();
   }
 }
 
@@ -353,6 +394,7 @@ function fieldClick(i, j) {
 function preload() {
   loadTextures();
   loadSounds();
+  loadFonts();
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -371,13 +413,16 @@ function setup() {
   setAdj(1, 1, 0, ter, false);
   setAdj(fWidth - 2, fHeight - 2, 0, ter, false);
   initGridClick();
-  const cnv = createCanvas(windowWidth, windowHeight);
+  const cnv = createCanvas(windowWidth - 3, windowHeight - 3);
   setStartLocation();
   cnv.mouseClicked(clickEvent);
   showMainButtons();
   strokeWeight(0);
   Player.nextTurn();
-  showNonCityButtons();
+  sideButton = new Button(
+    lock(sidePadClick, this), width - sidePadWidth - sideButWidth, 0,
+    sideButWidth, height, false, color(255), '>', 3, 3);
+  buttons.push(sideButton);
   sounds.themeMelody0.loop();
 }
 
@@ -395,8 +440,11 @@ function draw() {
   drawEnrgs();
   animate();
   drawActionZones();
+  if (sidePadOpen) {
+    drawSidePad();
+    drawMainInfo();
+  }
   drawButtons();
-  drawMainInfo();
 }
 
 function setStartLocation() {
@@ -471,6 +519,10 @@ function loadSounds() {
   loadSoundl('bang');
   loadSoundl('themeMelody0');
   sounds.themeMelody0.setVolume(0.3);
+}
+
+function loadFonts() {
+  fonts.mainFont = loadFont('fonts/FFFFORWA.TTF');
 }
 
 function loadSoundl(name) {
@@ -559,34 +611,83 @@ function mouseWheel(event) {
   return false;
 }
 
-function showMainButtons() {
-  buttons.push(new Button(nextTurn, width - 300, height - 100, 250, 50, false, color(255), 'END TURN', 1, 1));
-}
-
 function nextTurn() {
   Player.nextTurn();
 }
 
+function showMainButtons() {
+  buttons.push(new Button(nextTurn, width - 300, height - 100, 250, 50,
+    false, color(255), 'END TURN', 2, 2));
+  hideSideIfNeed();
+}
+
 function showBasicUnitButtons(u) {
   clearSideButtons();
-  buttons.push(new Button(lock(destructUnit, u), width - 300, 50, 250, 50, false, color(255), 'delete', 1, 2));
-  buttons.push(new Button(lock(repairUnit, u), width - 300, 150, 250, 50, false, color(255), `repair ${priceList[`repair${getType(u)}`]}$`, 1, 2));
+  buttons.push(new Button(lock(destructUnit, u), width - 300, 50,
+    250, 50, false, color(255), 'delete', 2, 2));
+  buttons.push(new Button(lock(repairUnit, u), width - 300, 150, 250, 50,
+    false, color(255), `repair ${priceList[`repair${getType(u)}`]}$`, 2, 2));
+  hideSideIfNeed();
 }
 
 function showCityButtons(u) {
-  buttons.push(new Button(lock(buyMan, u), width - 300, 220, 250, 50, false, color(255), `man ${priceList.man}$`, 1, 2));
-  buttons.push(new Button(lock(buyTank, u), width - 300, 290, 250, 50, false, color(255), `tank ${priceList.tank}$`, 1, 2));
+  buttons.push(new Button(lock(buyMan, u), width - 300, 220, 250, 50,
+    false, color(255), `man ${priceList.man}$`, 2, 2));
+  buttons.push(new Button(lock(buyTank, u), width - 300, 290, 250, 50,
+    false, color(255), `tank ${priceList.tank}$`, 2, 2));
+  hideSideIfNeed();
+
 }
 
 function showNonCityButtons() {
   clearSideButtons();
-  buttons.push(new Button(lock(buyOnTer, new City(0, 0, players[actPlNum])), width - 300, 80, 250, 50, false, color(255), `city ${priceList.city}$`, 1, 2));
-  buttons.push(new Button(lock(buyOnTer, new Fort(0, 0, players[actPlNum])), width - 300, 150, 250, 50, false, color(255), `fort ${priceList.fort}$`, 1, 2));
-  buttons.push(new Button(lock(buyOnTer, new Farm(0, 0, players[actPlNum])), width - 300, 220, 250, 50, false, color(255), `farm ${priceList.farm}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new City(0, 0, players[actPlNum])),
+    width - 300, 80, 250, 50,
+    false, color(255), `city ${priceList.city}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new Fort(0, 0, players[actPlNum])),
+    width - 300, 150, 250, 50,
+    false, color(255), `fort ${priceList.fort}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new Farm(0, 0, players[actPlNum])),
+    width - 300, 220, 250, 50,
+    false, color(255), `farm ${priceList.farm}$`, 1, 2));
+  hideSideIfNeed();
+  showMainButtons();
 }
 
 function clearSideButtons() {
-  delGroup(2);
+  delGroup(2, 2);
+}
+
+function hideSideIfNeed(always = false) {
+  if (!sidePadOpen || always) {
+    eachInGroup(2, b => {
+      b.enabled = false;
+    });
+  }
+}
+
+function openSidePad() {
+  sidePadOpen = true;
+  clearSideButtons();
+  showNonCityButtons();
+}
+
+function closeSidePad() {
+  sidePadOpen = false;
+}
+
+function sidePadClick(b) {
+  console.log(b);
+  if (!sidePadOpen) {
+    sideButton.x = width - sidePadWidth - sideButWidth;
+    sideButton.text = '>';
+    openSidePad();
+  } else {
+    closeSidePad();
+    sideButton.x = width - sideButWidth;
+    sideButton.text = '<';
+  }
+  hideSideIfNeed();
 }
 
 function repairUnit(u) {
@@ -649,7 +750,8 @@ function fireMoveUnit(u) { // if fireable unit is clicked
 }
 
 function canMove(i0, j0, range, i, j, floats = false) {
-  if (isAdj(i0, j0, range, i, j) && Unit.getUnit(i, j) === undefined && (ter[i][j] === 0 || (floats && ter[i][j] === 2))) {
+  if (isAdj(i0, j0, range, i, j) && Unit.getUnit(i, j) === undefined &&
+    (ter[i][j] === 0 || (floats && ter[i][j] === 2))) {
     return true;
   }
   return false;
@@ -657,7 +759,8 @@ function canMove(i0, j0, range, i, j, floats = false) {
 
 function canFire(i0, j0, range, i, j) {
   const enm = Unit.getUnit(i, j);
-  if (isAdj(i0, j0, range, i, j) && enm !== undefined && enm.plr.id !== actPlNum) {
+  if (isAdj(i0, j0, range, i, j) && enm !== undefined &&
+    enm.plr.id !== actPlNum) {
     return true;
   }
   console.log('cant fire');
@@ -665,7 +768,8 @@ function canFire(i0, j0, range, i, j) {
 }
 
 function canSetCheck(fCheck, u, groundOnly, param, i, j) {
-  if (fCheck(i, j, u, param) && f[i][j] === actPlNum && Unit.getUnit(i, j) === undefined && (!groundOnly || ter[i][j] < 1)) {
+  if (fCheck(i, j, u, param) && f[i][j] === actPlNum &&
+    Unit.getUnit(i, j) === undefined && (!groundOnly || ter[i][j] < 1)) {
     return true;
   }
   return false;
@@ -680,7 +784,8 @@ function canSetNearCity(i, j, u, city) {
 
 function performAct(i, j, fnAtt = false) {
   if (action.aType === actType.CREATE) {
-    if (players[actPlNum].money >= action.u.price && (action.city === undefined || action.city.energy >= 2)) {
+    if (players[actPlNum].money >= action.u.price &&
+      (action.city === undefined || action.city.energy >= 2)) {
       players[actPlNum].money -= action.u.price;
       action.u.energy = 0;
       if (action.city !== undefined) {
@@ -702,17 +807,18 @@ function performAct(i, j, fnAtt = false) {
         animations.push(new Animation(i, j, textures.blasts, 150));
         attackFromUnit(i, j);
       }
-    } else { // move
-      if (action.u.energy > 0) {
-        players[actPlNum].conq(i, j);
-        action.u.energy -= 1;
-        setActionUnit(i, j, false);
+    } else if (action.u.energy > 0) { // move
+      players[actPlNum].conq(i, j);
+      if (getType(action.u) === 'Tank') {
+        setAdj(i, j, actPlNum, f, true);
       }
+      action.u.energy -= 1;
+      setActionUnit(i, j, false);
     }
   }
 }
 
-function setActionUnit(i, j, addToUnits = true) { // sets current action unit to given position
+function setActionUnit(i, j, addToUnits = true) {
   action.u.i = i;
   action.u.j = j;
   if (addToUnits) {
@@ -732,7 +838,10 @@ function getXY(i, j) {
 }
 
 function getIJ(x, y) {
-  return [Math.round((x - offsetX) / fieldSize - 0.5), Math.round((y - offsetY) / fieldSize - 0.5)];
+  return [
+    Math.round((x - offsetX) / fieldSize - 0.5),
+    Math.round((y - offsetY) / fieldSize - 0.5)
+  ];
 }
 
 function initGridClick() {
@@ -746,8 +855,6 @@ function initGridClick() {
   }
   console.log(buttons);
 }
-
-const lock = (f, ...args) => (...args2) => f(...args, ...args2);
 
 function initArr(arr, val = 0) {
   const ySlice = [];
@@ -778,12 +885,12 @@ function isInBounds(i, j) {
 function getHighestPr(arr) {
   let highestPr = -10;
   let res;
-  arr.forEach((obj) => {
+  arr.forEach(obj => {
     if (obj.priority > highestPr) {
       highestPr = obj.priority;
     }
   });
-  arr.forEach((obj) => {
+  arr.forEach(obj => {
     if (obj.priority === highestPr) {
       res = obj;
     }
@@ -831,6 +938,11 @@ function drawBackgr() {
   }
 }
 
+function drawSidePad() {
+  fill(100);
+  rect(width - sidePadWidth, 0, sidePadWidth, height);
+}
+
 function drawButtons() {
   buttons.forEach(b => {
     if (b.col !== undefined) {
@@ -840,12 +952,15 @@ function drawButtons() {
 }
 
 function drawButton(b) {
-  textSize(32);
-  textAlign(CENTER, CENTER);
-  fill(b.col);
-  rect(b.x, b.y, b.w, b.h);
-  fill(0);
-  text(b.text, b.x, b.y, b.w, b.h);
+  if (b.enabled) {
+    textSize(32);
+    textAlign(CENTER, CENTER);
+    textFont(fonts.mainFont);
+    fill(b.col);
+    rect(b.x, b.y, b.w, b.h);
+    fill(0);
+    text(b.text, b.x, b.y, b.w, b.h);
+  }
 }
 
 function drawF(x, y, ...col) {
@@ -871,25 +986,18 @@ function drawMount(x, y) {
   } else {
     image(textures.mount1, x, y, fieldSize, fieldSize);
   }
-  // fill(150);
-  // triangle(x + fieldSize / 2, y - fieldSize / 4, x, y + fieldSize, x + fieldSize, y + fieldSize);
 }
 
 function drawWater(x, y) {
   image(textures.water, x, y, fieldSize, fieldSize);
-  // drawF(x, y, 130, 160, 255);
 }
 
 function drawCity(x, y, plr) {
   image(textures.city, x, y, fieldSize, fieldSize);
-  //  fill(plr.color);
-  // rect(x + fieldSize / 4, y + fieldSize / 5, fieldSize / 2, (fieldSize * 4) / 5);
 }
 
 function drawFort(x, y, plr) {
   image(textures.fort, x, y, fieldSize, fieldSize);
-  // fill(170);
-  // rect(x + fieldSize / 4, y + fieldSize / 2, fieldSize / 2, (fieldSize) / 3);
 }
 
 function drawFarm(x, y, plr) {
@@ -899,20 +1007,13 @@ function drawFarm(x, y, plr) {
   } else {
     image(textures.farm1, x, y, fieldSize, fieldSize);
   }
-  // fill(230, 230, 140);
-  // rect(x + fieldSize / 3, y + fieldSize / 2, fieldSize / 3, fieldSize / 3);
 }
 
 function drawMan(x, y, plr) {
-  image(textures[`man0p${plr.id}`], x, y, fieldSize, fieldSize);
-  // fill(plr.color);
-  // ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize / 2, fieldSize / 2);
-}
+  image(textures[`man0p${plr.id}`], x, y, fieldSize, fieldSize);}
 
 function drawTank(x, y, plr) {
   image(textures[`tank0p${plr.id}`], x, y, fieldSize, fieldSize);
-  // fill(plr.color);
-  // ellipse(x + fieldSize / 2, y + fieldSize / 2, fieldSize * (3 / 4), fieldSize * (3 / 4));
 }
 
 function drawCanMove(x, y) {
@@ -958,7 +1059,7 @@ function drawMainInfo() {
   fill(getBrightColor(players[actPlNum].color));
   text(`Player ${actPlNum + 1}`, width - 300, height - 300, 250, 50);
   fill('gold');
-  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 260, 250, 50);
+  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 250, 250, 50);
 }
 
 function getBrightColor(c) { // optimize
@@ -969,7 +1070,7 @@ function getBrightColor(c) { // optimize
 
 function drawBar(x, y, val, max, col) {
   const interval = 3, len = 4, hh = 4;
-  const d = (points) => {
+  const d = points => {
     for (let i = 0; i < points; i++) {
       rect((interval + len) * i + x + interval, y + fieldSize, len, hh);
     }
