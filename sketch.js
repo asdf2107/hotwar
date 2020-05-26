@@ -1,4 +1,3 @@
-/* eslint-disable no-undef */
 'use strict';
 
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
@@ -9,7 +8,7 @@ const buttons = [];
 const fWidth = 12, fHeight = 12, fAlpha = 100, sideButWidth = 30,
   sidePadWidth = 350;
 let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10,
-  fieldSize = 48, sidePadOpen = true, sideButton, uiButtons = {};
+  fieldSize = 48, sidePadOpen = true, sideButton;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -53,7 +52,7 @@ class Animation {
     if (this.counter >= this.changeRate - 1) {
       this.counter = 0;
       if (this.imgIndex === this.images.length - 1 && !this.repeatable) {
-        removeFromArr(this, animations);
+        destruct(this, animations);
       } else if (this.imgIndex === this.images.length - 1 && this.repeatable) {
         this.imgIndex = 0;
       } else {
@@ -89,11 +88,14 @@ class Button {
     this.priority = priority;
     this.group = group;
     this.sound = sound;
+    buttons.push(this);
   }
 
   static onClick() {
     const act = [];
+    console.log(fieldSize);
     buttons.forEach(zone => {
+      console.log(zone.i, zone.j, ...getXY(zone.i, zone.j));
       if (zone.enabled) {
         if (zone.scalable === true && isInArea(
           mouseX,
@@ -115,16 +117,6 @@ class Button {
         }
       }
     });
-    for (const zone in uiButtons) {
-      if (uiButtons[zone].enabled && isInArea(
-        mouseX,
-        mouseY,
-        uiButtons[zone].x,
-        uiButtons[zone].y,
-        uiButtons[zone].w,
-        uiButtons[zone].h
-      )) { act.push(uiButtons[zone]); }
-    }
     let b;
     if (act.length > 1) {
       b = getHighestPr(act);
@@ -134,8 +126,23 @@ class Button {
     try {
       b.sound.play();
       b.callback();
-    } catch (e) { console.log(e); }
+    } catch {}
   }
+}
+
+function delGroup(n, c) {
+  function cb(b) {
+    buttons.splice(buttons.indexOf(b), c);
+  }
+  eachInGroup(n, cb);
+}
+
+function eachInGroup(n, callback) {
+  buttons.forEach(b => {
+    if (b.group === n) {
+      callback(b);
+    }
+  });
 }
 
 class Unit {
@@ -174,12 +181,12 @@ class Unit {
 }
 
 function destructUnit(u) {
-  removeFromArr(u, units);
+  destruct(u, units);
   action = undefined;
   showNonCityButtons();
 }
 
-function removeFromArr(el, arr) {
+function destruct(el, arr) {
   for (let i = 0; i < arr.length; i++) {
     if (arr[i].id === el.id) {
       arr.splice(i, 1);
@@ -187,9 +194,19 @@ function removeFromArr(el, arr) {
   }
 }
 
-let curId = 0;
 function newId() {
-  return curId++;
+  for (let i = 0; i < 2000; i++) {
+    let taken = false;
+    units.forEach(u => {
+      if (u.id === i) {
+        taken = true;
+      }
+    });
+    if (!taken) {
+      return i;
+    }
+  }
+  throw new Error('too many units! (newId)');
 }
 
 class City extends Unit {
@@ -302,7 +319,7 @@ class Player {
   constructor(id, color) {
     this.id = id;
     this.color = color;
-    this.money = 95;
+    this.money = 75;
   }
 
   conq(i, j) {
@@ -313,10 +330,11 @@ class Player {
     action = undefined;
     autoCaptureMountsSeas();
     actPlNum = actPlNum === players.length - 1 ? 0 : ++actPlNum;
-    //hideSideButtons();
-    //showNonCityButtons();
+    clearSideButtons();
+    showNonCityButtons();
     refillEnergy();
     addMoney();
+    console.log(actPlNum);
   }
 }
 
@@ -342,10 +360,14 @@ function getEarnings() {
 
 const clickEvent = () => {
   Button.onClick();
+  console.log(buttons);
 };
 
 function fieldClick(i, j) {
   const u = Unit.getUnit(i, j);
+  console.log(i, j, action, u);
+  console.log(buttons);
+  clearSideButtons();
   if (action !== undefined) {
     if (action.fnCrMv(i, j)) {
       performAct(i, j);
@@ -354,9 +376,7 @@ function fieldClick(i, j) {
     } else {
       action = undefined;
     }
-  } else if (getType(u) === undefined || u === undefined) {
-    showNonCityButtons();
-  } else if (getType(u) === 'City' /*&& u.plr.id === actPlNum*/) {
+  } else if (getType(u) === 'City' && u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
     showCityButtons(u);
   } else if ((getType(u) === 'Man' || getType(u) === 'Tank') &&
@@ -365,6 +385,8 @@ function fieldClick(i, j) {
     fireMoveUnit(u);
   } else if (getType(u) !== undefined && u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
+  } else {
+    showNonCityButtons();
   }
 }
 
@@ -394,7 +416,7 @@ function setup() {
   const cnv = createCanvas(windowWidth - 3, windowHeight - 3);
   setStartLocation();
   cnv.mouseClicked(clickEvent);
-  //showMainButtons();
+  showMainButtons();
   strokeWeight(0);
   Player.nextTurn();
   sideButton = new Button(
@@ -402,34 +424,8 @@ function setup() {
     sideButWidth, height, false, color(255), '>', 3, 3);
   buttons.push(sideButton);
   sounds.themeMelody0.loop();
-  uiButtons = {
-    nextTurn: new Button(perfNextTurn, width - 300, height - 100, 250, 50,
-      false, players[0].color, 'END TURN', 2, 2),
-    delete: new Button(() => undefined, width - 300, 50,
-      250, 50, false, color(255, 100, 100), 'delete', 2, 2),
-    repair: new Button(() => undefined, width - 300, 150, 250, 50,
-      false, color(255), 'repair', 2, 2),
-    city: new Button(() => undefined, width - 300, 80, 250, 50,
-      false, color(255), `city ${priceList.city}$`, 1, 2),
-    fort: new Button(() => undefined, width - 300, 150, 250, 50,
-      false, color(255), `fort ${priceList.fort}$`, 1, 2),
-    farm: new Button(() => undefined, width - 300, 220, 250, 50,
-      false, color(255), `farm ${priceList.farm}$`, 1, 2),
-    man: new Button(() => undefined, width - 300, 220, 250, 50,
-      false, color(255), `man ${priceList.man}$`, 2, 2),
-    tank: new Button(() => undefined, width - 300, 290, 250, 50,
-      false, color(255), `tank ${priceList.tank}$`, 2, 2),
-  };
-  updButtonObjs();
-  hideSideButtons();
-  showNonCityButtons();
 }
 
-function updButtonObjs() {
-  uiButtons.city.callback = lock(buyOnTer, new City(-1, -1, players[actPlNum]));
-  uiButtons.fort.callback = lock(buyOnTer, new Fort(-1, -1, players[actPlNum]));
-  uiButtons.farm.callback = lock(buyOnTer, new Farm(-1, -1, players[actPlNum]));
-}
 
 // eslint-disable-next-line no-unused-vars
 function draw() {
@@ -615,69 +611,73 @@ function mouseWheel(event) {
   return false;
 }
 
-function perfNextTurn() {
+function nextTurn() {
   Player.nextTurn();
-  uiButtons.nextTurn.col = players[actPlNum].color;
-  console.log(uiButtons.nextTurn);
 }
 
 function showMainButtons() {
-  uiButtons.nextTurn.enabled = true;
+  buttons.push(new Button(nextTurn, width - 300, height - 100, 250, 50,
+    false, color(255), 'END TURN', 2, 2));
   hideSideIfNeed();
 }
 
-function showBasicUnitButtons(u, hideAll = true) {
-  if (hideAll) hideSideButtons();
-  uiButtons.delete.callback = lock(destructUnit, u);
-  uiButtons.repair.callback = lock(repairUnit, u);
-  uiButtons.repair.text = `repair ${priceList[`repair${getType(u)}`]}$`;
-  uiButtons.delete.enabled = true;
-  uiButtons.repair.enabled = true;
-  showMainButtons();
+function showBasicUnitButtons(u) {
+  clearSideButtons();
+  buttons.push(new Button(lock(destructUnit, u), width - 300, 50,
+    250, 50, false, color(255), 'delete', 2, 2));
+  buttons.push(new Button(lock(repairUnit, u), width - 300, 150, 250, 50,
+    false, color(255), `repair ${priceList[`repair${getType(u)}`]}$`, 2, 2));
   hideSideIfNeed();
 }
 
 function showCityButtons(u) {
-  hideSideButtons();
-  showBasicUnitButtons(u, false);
-  uiButtons.man.callback = lock(buyMan, u);
-  uiButtons.tank.callback = lock(buyTank, u);
-  uiButtons.man.enabled = true;
-  uiButtons.tank.enabled = true;
+  buttons.push(new Button(lock(buyMan, u), width - 300, 220, 250, 50,
+    false, color(255), `man ${priceList.man}$`, 2, 2));
+  buttons.push(new Button(lock(buyTank, u), width - 300, 290, 250, 50,
+    false, color(255), `tank ${priceList.tank}$`, 2, 2));
   hideSideIfNeed();
+
 }
 
 function showNonCityButtons() {
-  hideSideButtons();
-  uiButtons.city.enabled = true;
-  uiButtons.fort.enabled = true;
-  uiButtons.farm.enabled = true;
-  showMainButtons();
+  clearSideButtons();
+  buttons.push(new Button(lock(buyOnTer, new City(0, 0, players[actPlNum])),
+    width - 300, 80, 250, 50,
+    false, color(255), `city ${priceList.city}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new Fort(0, 0, players[actPlNum])),
+    width - 300, 150, 250, 50,
+    false, color(255), `fort ${priceList.fort}$`, 1, 2));
+  buttons.push(new Button(lock(buyOnTer, new Farm(0, 0, players[actPlNum])),
+    width - 300, 220, 250, 50,
+    false, color(255), `farm ${priceList.farm}$`, 1, 2));
   hideSideIfNeed();
+  showMainButtons();
+}
+
+function clearSideButtons() {
+  delGroup(2, 2);
 }
 
 function hideSideIfNeed(always = false) {
   if (!sidePadOpen || always) {
-    hideSideButtons();
+    eachInGroup(2, b => {
+      b.enabled = false;
+    });
   }
-}
-
-function hideSideButtons() {
-  for (const b in uiButtons) uiButtons[b].enabled = false;
 }
 
 function openSidePad() {
   sidePadOpen = true;
-  hideSideButtons();
+  clearSideButtons();
   showNonCityButtons();
 }
 
 function closeSidePad() {
   sidePadOpen = false;
-  hideSideButtons();
 }
 
 function sidePadClick(b) {
+  console.log(b);
   if (!sidePadOpen) {
     sideButton.x = width - sidePadWidth - sideButWidth;
     sideButton.text = '>';
@@ -722,7 +722,6 @@ function buyTank(city) {
 }
 
 function buyOnTer(u) {
-  updButtonObjs();
   action = {
     fnCrMv: lock(canSetCheck, () => true, true, u, undefined),
     u,
@@ -764,6 +763,7 @@ function canFire(i0, j0, range, i, j) {
     enm.plr.id !== actPlNum) {
     return true;
   }
+  console.log('cant fire');
   return false;
 }
 
@@ -853,6 +853,7 @@ function initGridClick() {
       buttons.push(b);
     }
   }
+  console.log(buttons);
 }
 
 function initArr(arr, val = 0) {
@@ -866,7 +867,9 @@ function initArr(arr, val = 0) {
 }
 
 function isInArea(x0, y0, x, y, w, h) {
+  console.log(x0, y0, x, y, w, h);
   if (x0 >= x && x0 < x + w && y0 >= y && y0 < y + h) {
+    console.log('true');
     return true;
   }
   return false;
@@ -946,11 +949,10 @@ function drawButtons() {
       drawButton(b);
     }
   });
-  for (const b in uiButtons) drawButton(uiButtons[b]);
 }
 
 function drawButton(b) {
-  if ((b !== undefined) && b.enabled) {
+  if (b.enabled) {
     textSize(32);
     textAlign(CENTER, CENTER);
     textFont(fonts.mainFont);
