@@ -342,6 +342,7 @@ function getEarnings() {
 
 const clickEvent = () => {
   Button.onClick();
+  console.log(units);
 };
 
 function fieldClick(i, j) {
@@ -404,7 +405,7 @@ function setup() {
   sounds.themeMelody0.loop();
   uiButtons = {
     nextTurn: new Button(perfNextTurn, width - 300, height - 100, 250, 50,
-      false, players[0].color, 'END TURN', 2, 2),
+      false, color(255), 'END TURN', 2, 2),
     delete: new Button(() => undefined, width - 300, 50,
       250, 50, false, color(255, 100, 100), 'delete', 2, 2),
     repair: new Button(() => undefined, width - 300, 150, 250, 50,
@@ -617,8 +618,7 @@ function mouseWheel(event) {
 
 function perfNextTurn() {
   Player.nextTurn();
-  uiButtons.nextTurn.col = players[actPlNum].color;
-  console.log(uiButtons.nextTurn);
+  updButtonObjs();
 }
 
 function showMainButtons() {
