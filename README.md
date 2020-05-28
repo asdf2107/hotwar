@@ -9,6 +9,7 @@ Written in JavaScript using p5.js
 * Each turn you get money. Cities give 10$ each, farms - 2$ each. Each soldier or tank cost 1$ to maintain.
 * You can repair or delete almost everything (except the landscape).
 * Units have health (white bar) and energy (blue bar). Actions take up energy (Attack, hire - 2🗲, move, repair - 1🗲). Soldiers can move 1 tile vertically or horizontally. Tanks capture more land and can move 2 tiles vertically or horizontally, 1 tile diagonally.
+* Water blocks your way - not a problem! Just build a platform.
 * The goal is simple - to destroy all enemy's cities.
 
 ## How do I start the game?
