@@ -20,6 +20,7 @@ const priceList = {
   city: 100,
   fort: 15,
   farm: 10,
+  platform: 20,
   man: 10,
   tank: 40,
   repairCity: 15,
@@ -27,6 +28,7 @@ const priceList = {
   repairTank: 15,
   repairFort: 10,
   repairFarm: 0,
+  repairPlatform: 0,
 };
 const textures = {}, sounds = {}, fonts = {}, animations = [];
 
@@ -155,14 +157,16 @@ class Unit {
     this.price = price;
   }
 
-  static getUnit(i, j) {
-    let res;
+  static getUnit(i, j) { //DOESNT WORK
+    const arr = [];
     units.forEach(u => {
       if (u.i === i && u.j === j) {
-        res = u;
+        arr.push(u);
       }
     });
-    return res;
+    console.log(arr[0]);
+    if (arr.length > 1 && getType(arr[0]) === 'Platform') return arr[1];
+    return arr[0];
   }
 
   harm(hp) {
@@ -171,6 +175,13 @@ class Unit {
       destructUnit(this);
     }
   }
+}
+
+function isPlatform(i, j) {
+  units.forEach(u => {
+    if (getType(u) === 'Platform' && u.i === i && u.j === j) return true;
+  });
+  return false;
 }
 
 function destructUnit(u) {
@@ -208,6 +219,12 @@ class Fort extends Unit {
 class Farm extends Unit {
   constructor(i, j, plr) {
     super(i, j, plr, 1, -1, -1, -1, 0, priceList.farm);
+  }
+}
+
+class Platform extends Unit {
+  constructor(i, j, plr) {
+    super(i, j, plr, 1, -1, -1, -1, 0, priceList.platform);
   }
 }
 
@@ -295,6 +312,9 @@ function getType(u) {
   if (u instanceof Farm) {
     return 'Farm';
   }
+  if (u instanceof Platform) {
+    return 'Platform';
+  }
   throw new Error('Unit child not added to getType!');
 }
 
@@ -307,14 +327,14 @@ class Player {
 
   conq(i, j) {
     f[i][j] = this.id;
+    // Set player property for units at [i][j] to actPlId
   }
 
-  static nextTurn() {
+  static nextTurn(noButtons = false) {
     action = undefined;
     autoCaptureMountsSeas();
     actPlNum = actPlNum === players.length - 1 ? 0 : ++actPlNum;
-    //hideSideButtons();
-    //showNonCityButtons();
+    if (!noButtons) showNonCityButtons();
     refillEnergy();
     addMoney();
   }
@@ -397,28 +417,30 @@ function setup() {
   cnv.mouseClicked(clickEvent);
   //showMainButtons();
   strokeWeight(0);
-  Player.nextTurn();
+  Player.nextTurn(true);
   sideButton = new Button(
-    lock(sidePadClick, this), width - sidePadWidth - sideButWidth, 0,
+    sidePadClick, width - sidePadWidth - sideButWidth, 0,
     sideButWidth, height, false, color(255), '>', 3, 3);
   buttons.push(sideButton);
   sounds.themeMelody0.loop();
   uiButtons = {
-    nextTurn: new Button(perfNextTurn, width - 300, height - 100, 250, 50,
+    nextTurn: new Button(perfNextTurn, width - 300, height - 70, 300, 50,
       false, color(255), 'END TURN', 2, 2),
-    delete: new Button(() => undefined, width - 300, 50,
-      250, 50, false, color(255, 100, 100), 'delete', 2, 2),
-    repair: new Button(() => undefined, width - 300, 150, 250, 50,
+    delete: new Button(() => undefined, width - 300, 20, 300, 50,
+      false, color(255, 100, 100), 'delete', 2, 2),
+    repair: new Button(() => undefined, width - 300, 120, 300, 50,
       false, color(255), 'repair', 2, 2),
-    city: new Button(() => undefined, width - 300, 80, 250, 50,
+    city: new Button(() => undefined, width - 300, 50, 300, 50,
       false, color(255), `city ${priceList.city}$`, 1, 2),
-    fort: new Button(() => undefined, width - 300, 150, 250, 50,
+    fort: new Button(() => undefined, width - 300, 120, 300, 50,
       false, color(255), `fort ${priceList.fort}$`, 1, 2),
-    farm: new Button(() => undefined, width - 300, 220, 250, 50,
+    farm: new Button(() => undefined, width - 300, 190, 300, 50,
       false, color(255), `farm ${priceList.farm}$`, 1, 2),
-    man: new Button(() => undefined, width - 300, 220, 250, 50,
+    platform: new Button(() => undefined, width - 300, 260, 300, 50,
+      false, color(255), `platform ${priceList.platform}$`, 1, 2),
+    man: new Button(() => undefined, width - 300, 190, 300, 50,
       false, color(255), `man ${priceList.man}$`, 2, 2),
-    tank: new Button(() => undefined, width - 300, 290, 250, 50,
+    tank: new Button(() => undefined, width - 300, 260, 300, 50,
       false, color(255), `tank ${priceList.tank}$`, 2, 2),
   };
   updButtonObjs();
@@ -430,6 +452,8 @@ function updButtonObjs() {
   uiButtons.city.callback = lock(buyOnTer, new City(-1, -1, players[actPlNum]));
   uiButtons.fort.callback = lock(buyOnTer, new Fort(-1, -1, players[actPlNum]));
   uiButtons.farm.callback = lock(buyOnTer, new Farm(-1, -1, players[actPlNum]));
+  uiButtons.platform.callback = lock(buyOnTer,
+    new Platform(-1, -1, players[actPlNum]), false, true);
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -491,6 +515,7 @@ function dragScrn() {
 function loadTextures() {
   loadTexture('city');
   loadTexture('fort');
+  loadTexture('platform');
   loadTexture('farm0');
   loadTexture('farm1');
   loadTexture('ground0');
@@ -587,21 +612,10 @@ function autoCaptureMountsSeas() {
     for (let j = 0; j < fHeight; j++) {
       if (f[i][j] === -1 && ter[i][j] > 0) {
         getAdj(0, i, j).forEach(el => {
-          if (f[el.i][el.j] > -1 && ter[el.i][el.j] < 1) {
+          if (f[el.i][el.j] > -1 && (ter[el.i][el.j] < 1 || isPlatform(el.i, el.j))) {
             f[i][j] = f[el.i][el.j];
           }
         });
-      } else if (ter[i][j] > 0) {
-        const captrd = f[i][j];
-        let found = false;
-        getAdj(0, i, j).forEach(el => {
-          if (f[el.i][el.j] === captrd && ter[el.i][el.j] < 1) {
-            found = true;
-          }
-        });
-        if (!found) {
-          f[i][j] = -1;
-        }
       }
     }
   }
@@ -628,11 +642,12 @@ function showMainButtons() {
 
 function showBasicUnitButtons(u, hideAll = true) {
   if (hideAll) hideSideButtons();
+  const repPrice = priceList[`repair${getType(u)}`];
   uiButtons.delete.callback = lock(destructUnit, u);
   uiButtons.repair.callback = lock(repairUnit, u);
-  uiButtons.repair.text = `repair ${priceList[`repair${getType(u)}`]}$`;
+  uiButtons.repair.text = `repair ${repPrice}$`;
   uiButtons.delete.enabled = true;
-  uiButtons.repair.enabled = true;
+  if (repPrice > 0) uiButtons.repair.enabled = true;
   showMainButtons();
   hideSideIfNeed();
 }
@@ -652,6 +667,7 @@ function showNonCityButtons() {
   uiButtons.city.enabled = true;
   uiButtons.fort.enabled = true;
   uiButtons.farm.enabled = true;
+  uiButtons.platform.enabled = true;
   showMainButtons();
   hideSideIfNeed();
 }
@@ -677,7 +693,7 @@ function closeSidePad() {
   hideSideButtons();
 }
 
-function sidePadClick(b) {
+function sidePadClick() {
   if (!sidePadOpen) {
     sideButton.x = width - sidePadWidth - sideButWidth;
     sideButton.text = '>';
@@ -702,7 +718,7 @@ function repairUnit(u) {
 function buyMan(city) {
   const m = new Man(0, 0, players[actPlNum]);
   action = {
-    fnCrMv: lock(canSetCheck, canSetNearCity, true, m, city),
+    fnCrMv: lock(canSetCheck, canSetNearCity, m, true, false, city),
     u: m,
     aType: actType.CREATE,
     city,
@@ -713,7 +729,7 @@ function buyMan(city) {
 function buyTank(city) {
   const t = new Tank(0, 0, players[actPlNum]);
   action = {
-    fnCrMv: lock(canSetCheck, canSetNearCity, true, t, city),
+    fnCrMv: lock(canSetCheck, canSetNearCity, t, true, false, city),
     u: t,
     aType: actType.CREATE,
     city,
@@ -721,10 +737,11 @@ function buyTank(city) {
   updateActionZones();
 }
 
-function buyOnTer(u) {
+function buyOnTer(u, setOnGround = true, setOnWater = false) {
   updButtonObjs();
   action = {
-    fnCrMv: lock(canSetCheck, () => true, true, u, undefined),
+    fnCrMv: lock(canSetCheck, () => true,
+      u, setOnGround, setOnWater, undefined),
     u,
     aType: actType.CREATE,
   };
@@ -751,8 +768,10 @@ function fireMoveUnit(u) { // if fireable unit is clicked
 }
 
 function canMove(i0, j0, range, i, j, floats = false) {
-  if (isAdj(i0, j0, range, i, j) && Unit.getUnit(i, j) === undefined &&
-    (ter[i][j] === 0 || (floats && ter[i][j] === 2))) {
+  if (isAdj(i0, j0, range, i, j) &&
+    (getType(Unit.getUnit(i, j)) === 'Platform' || Unit.getUnit(i, j) === undefined) &&
+      ((ter[i][j] === 0 || getType(Unit.getUnit(i, j)) === 'Platform') ||
+        (floats && ter[i][j] === 2))) {
     return true;
   }
   return false;
@@ -760,6 +779,7 @@ function canMove(i0, j0, range, i, j, floats = false) {
 
 function canFire(i0, j0, range, i, j) {
   const enm = Unit.getUnit(i, j);
+  console.log({ enemy: Unit.getUnit(i, j) });
   if (isAdj(i0, j0, range, i, j) && enm !== undefined &&
     enm.plr.id !== actPlNum) {
     return true;
@@ -767,9 +787,10 @@ function canFire(i0, j0, range, i, j) {
   return false;
 }
 
-function canSetCheck(fCheck, u, groundOnly, param, i, j) {
+function canSetCheck(fCheck, u, onGround, onWater, param, i, j) {
   if (fCheck(i, j, u, param) && f[i][j] === actPlNum &&
-    Unit.getUnit(i, j) === undefined && (!groundOnly || ter[i][j] < 1)) {
+    Unit.getUnit(i, j) === undefined &&
+      ((onGround && ter[i][j] < 1) || (onWater && ter[i][j] === 2))) {
     return true;
   }
   return false;
@@ -1007,6 +1028,10 @@ function drawFarm(x, y, plr) {
   }
 }
 
+function drawPlatform(x, y, plr) {
+  image(textures.platform, x, y, fieldSize, fieldSize);
+}
+
 function drawMan(x, y, plr) {
   image(textures[`man0p${plr.id}`], x, y, fieldSize, fieldSize);}
 
@@ -1055,9 +1080,9 @@ function drawEnrg(x, y, hp, max) {
 function drawMainInfo() {
   textAlign(CENTER);
   fill(getBrightColor(players[actPlNum].color));
-  text(`Player ${actPlNum + 1}`, width - 300, height - 300, 250, 50);
+  text(`Player ${actPlNum + 1}`, width - 300, height - 200, 250, 50);
   fill('gold');
-  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 250, 250, 50);
+  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 140, 250, 50);
 }
 
 function getBrightColor(c) { // optimize
@@ -1104,11 +1129,16 @@ function drawUnit(u) {
     drawFort(x, y, u.plr);
   } else if (type === 'Farm') {
     drawFarm(x, y, u.plr);
+  } else if (type === 'Platform') {
+    drawPlatform(x, y, u.plr);
   }
 }
 
 function drawUnits() {
   units.forEach(u => {
-    drawUnit(u);
+    if (getType(u) === 'Platform') drawUnit(u);
+  });
+  units.forEach(u => {
+    if (getType(u) !== 'Platform') drawUnit(u);
   });
 }
