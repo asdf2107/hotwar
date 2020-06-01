@@ -3,13 +3,30 @@
 
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
-const units = []; // man; tank; city; fort; farm; platform
+const units = []; // man; tank; city; wall
 const players = []; // active palyers
 const buttons = [];
-const fWidth = 12, fHeight = 12, fAlpha = 100, sideButWidth = 30,
-  sidePadWidth = 350;
-let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10,
-  fieldSize = 48, sidePadOpen = true, sideButton, uiButtons = {}, winner = -1;
+let uiButtons = {};
+let sideButton;
+
+const textures = {};
+const sounds = {};
+const fonts = {};
+const animations = [];
+const fWidth = 12;
+const fHeight = 12;
+const fAlpha = 100;
+const sideButWidth = 30;
+const sidePadWidth = 350;
+let waterTime = 0;
+let offsetX = 10;
+let offsetY = 10;
+let fieldSize = 48;
+let sidePadOpen = true;
+
+let action;
+let actPlNum = 1;
+let winner = -1;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -30,7 +47,6 @@ const priceList = {
   repairFarm: 0,
   repairPlatform: 0,
 };
-const textures = {}, sounds = {}, fonts = {}, animations = [];
 
 const lock = (f, ...args) => (...args2) => f(...args, ...args2);
 
@@ -240,59 +256,6 @@ class Tank extends Unit {
   }
 }
 
-function setAdj(i, j, val, arr, ifClear = true) {
-  for (let p = -1; p <= 1; p++) {
-    for (let q = -1; q <= 1; q++) {
-      if (arr[i + p] !== undefined && arr[i + p][j + q] !== undefined &&
-        (!ifClear || arr[i + p][j + q] === -1)) {
-        arr[i + p][j + q] = val;
-      }
-    }
-  }
-}
-
-// d: 0-cross[4];1-square[8];2-rhombus[12]
-function isAdj(i0, j0, d, i, j, noCenter = true) {
-  if (noCenter && i === i0 && j === j0) {
-    return false;
-  }
-  if (d === 0) {
-    if ((Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) === 0) ||
-    (Math.abs(j0 - j) <= 1 && Math.abs(i0 - i) === 0)) {
-      return true;
-    }
-  } else if (d === 1) {
-    if (Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) <= 1) {
-      return true;
-    }
-  } else if (d === 2) {
-    if (((Math.abs(i0 - i) <= 2 && Math.abs(j0 - j) === 0) ||
-    (Math.abs(j0 - j) <= 2 && Math.abs(i0 - i) === 0)) ||
-    (Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) <= 1)) {
-      return true;
-    }
-  } else {
-    throw new Error(`isAdj: invalid argument "d" (${d})`);
-  }
-  return false;
-}
-
-// d: 0-cross[4];1-square[8];2-rhombus[12]
-function getAdj(d, i, j, noCenter = true) {
-  const res = [];
-  for (let it = 0; it < fWidth; it++) {
-    for (let jt = 0; jt < fHeight; jt++) {
-      if (isAdj(it, jt, d, i, j, noCenter)) {
-        res.push({
-          i: it,
-          j: jt,
-        });
-      }
-    }
-  }
-  return res;
-}
-
 function getType(u) {
   if (!(u instanceof Unit)) {
     return undefined;
@@ -348,16 +311,66 @@ function getEarnings() {
   let cities = 0, farms = 0, army = 0;
   units.forEach(u => {
     if (u.plr.id === actPlNum) {
-      if (getType(u) === 'City') {
-        ++cities;
-      } else if (getType(u) === 'Farm') {
-        ++farms;
-      } else if (getType(u) === 'Man' || getType(u) === 'Tank') {
-        ++army;
-      }
+      if (getType(u) === 'City') ++cities;
+      else if (getType(u) === 'Farm') ++farms;
+      else if (getType(u) === 'Man' || getType(u) === 'Tank') ++army;
     }
   });
   return cities * 10 + farms * 2 - army;
+}
+
+function setAdj(i, j, val, arr, ifClear = true) {
+  for (let p = -1; p <= 1; p++) {
+    for (let q = -1; q <= 1; q++) {
+      if (arr[i + p] !== undefined &&
+          arr[i + p][j + q] !== undefined &&
+          (!ifClear || arr[i + p][j + q] === -1)) {
+        arr[i + p][j + q] = val;
+      }
+    }
+  }
+}
+
+// d: 0-cross[4]; 1-square[8]; 2-rhombus[12]
+function isAdj(i0, j0, d, i, j, noCenter = true) {
+  if (noCenter && i === i0 && j === j0) {
+    return false;
+  }
+  if (d === 0) {
+    if ((Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) === 0) ||
+        (Math.abs(j0 - j) <= 1 && Math.abs(i0 - i) === 0)) {
+      return true;
+    }
+  } else if (d === 1) {
+    if (Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) <= 1) {
+      return true;
+    }
+  } else if (d === 2) {
+    if (((Math.abs(i0 - i) <= 2 && Math.abs(j0 - j) === 0) ||
+        (Math.abs(j0 - j) <= 2 && Math.abs(i0 - i) === 0)) ||
+        (Math.abs(i0 - i) <= 1 && Math.abs(j0 - j) <= 1)) {
+      return true;
+    }
+  } else {
+    throw new Error(`isAdj: invalid argument "d" (${d})`);
+  }
+  return false;
+}
+
+// d: 0-cross[4]; 1-square[8]; 2-rhombus[12]
+function getAdj(d, i, j, noCenter = true) {
+  const res = [];
+  for (let it = 0; it < fWidth; it++) {
+    for (let jt = 0; jt < fHeight; jt++) {
+      if (isAdj(it, jt, d, i, j, noCenter)) {
+        res.push({
+          i: it,
+          j: jt,
+        });
+      }
+    }
+  }
+  return res;
 }
 
 const clickEvent = () => {
@@ -377,11 +390,11 @@ function fieldClick(i, j) {
     }
   } else if (getType(u) === undefined || u === undefined) {
     showNonCityButtons();
-  } else if (getType(u) === 'City' /*&& u.plr.id === actPlNum*/) {
+  } else if (getType(u) === 'City' && u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
     showCityButtons(u);
   } else if ((getType(u) === 'Man' || getType(u) === 'Tank') &&
-    u.plr.id === actPlNum) {
+      u.plr.id === actPlNum) {
     showBasicUnitButtons(u);
     fireMoveUnit(u);
   } else if (getType(u) !== undefined && u.plr.id === actPlNum) {
@@ -415,34 +428,10 @@ function setup() {
   const cnv = createCanvas(windowWidth - 3, windowHeight - 3);
   setStartLocation();
   cnv.mouseClicked(clickEvent);
-  //showMainButtons();
   strokeWeight(0);
   Player.nextTurn(true);
-  sideButton = new Button(
-    sidePadClick, width - sidePadWidth - sideButWidth, 0,
-    sideButWidth, height, false, color(255), '>', 3, 3);
-  buttons.push(sideButton);
   sounds.themeMelody0.loop();
-  uiButtons = {
-    nextTurn: new Button(perfNextTurn, width - 300, height - 70, 300, 50,
-      false, color(255), 'END TURN', 2, 2),
-    delete: new Button(() => undefined, width - 300, 20, 300, 50,
-      false, color(255, 100, 100), 'delete', 2, 2),
-    repair: new Button(() => undefined, width - 300, 120, 300, 50,
-      false, color(255), 'repair', 2, 2),
-    city: new Button(() => undefined, width - 300, 50, 300, 50,
-      false, color(255), `city ${priceList.city}$`, 1, 2),
-    fort: new Button(() => undefined, width - 300, 120, 300, 50,
-      false, color(255), `fort ${priceList.fort}$`, 1, 2),
-    farm: new Button(() => undefined, width - 300, 190, 300, 50,
-      false, color(255), `farm ${priceList.farm}$`, 1, 2),
-    platform: new Button(() => undefined, width - 300, 260, 300, 50,
-      false, color(255), `platform ${priceList.platform}$`, 1, 2),
-    man: new Button(() => undefined, width - 300, 190, 300, 50,
-      false, color(255), `man ${priceList.man}$`, 2, 2),
-    tank: new Button(() => undefined, width - 300, 260, 300, 50,
-      false, color(255), `tank ${priceList.tank}$`, 2, 2),
-  };
+  initUIButtons();
   updButtonObjs();
   hideSideButtons();
   showNonCityButtons();
@@ -477,6 +466,33 @@ function draw() {
   if (winner !== -1) {
     drawWin(players[winner]);
   }
+}
+
+function initUIButtons() {
+  sideButton = new Button(
+    sidePadClick, width - sidePadWidth - sideButWidth, 0,
+    sideButWidth, height, false, color(255), '>', 3, 3);
+  buttons.push(sideButton);
+  uiButtons = {
+    nextTurn: new Button(perfNextTurn, width - 300, height - 70, 300, 50,
+      false, color(255), 'END TURN', 2, 2),
+    delete: new Button(() => undefined, width - 300, 20, 300, 50,
+      false, color(255, 100, 100), 'delete', 2, 2),
+    repair: new Button(() => undefined, width - 300, 120, 300, 50,
+      false, color(255), 'repair', 2, 2),
+    city: new Button(() => undefined, width - 300, 50, 300, 50,
+      false, color(255), `city ${priceList.city}$`, 1, 2),
+    fort: new Button(() => undefined, width - 300, 120, 300, 50,
+      false, color(255), `fort ${priceList.fort}$`, 1, 2),
+    farm: new Button(() => undefined, width - 300, 190, 300, 50,
+      false, color(255), `farm ${priceList.farm}$`, 1, 2),
+    platform: new Button(() => undefined, width - 300, 260, 300, 50,
+      false, color(255), `platform ${priceList.platform}$`, 1, 2),
+    man: new Button(() => undefined, width - 300, 190, 300, 50,
+      false, color(255), `man ${priceList.man}$`, 2, 2),
+    tank: new Button(() => undefined, width - 300, 260, 300, 50,
+      false, color(255), `tank ${priceList.tank}$`, 2, 2),
+  };
 }
 
 function checkNotLostPlr(plNum) {
@@ -630,7 +646,9 @@ function autoCaptureMountsSeas() {
     for (let j = 0; j < fHeight; j++) {
       if (f[i][j] === -1 && ter[i][j] > 0) {
         getAdj(0, i, j).forEach(el => {
-          if (f[el.i][el.j] > -1 && (ter[el.i][el.j] < 1 || isPlatform(el.i, el.j))) {
+          if (f[el.i][el.j] > -1 &&
+              (ter[el.i][el.j] < 1 ||
+              isPlatform(el.i, el.j))) {
             f[i][j] = f[el.i][el.j];
           }
         });
@@ -788,9 +806,10 @@ function fireMoveUnit(u) { // if fireable unit is clicked
 
 function canMove(i0, j0, range, i, j, floats = false) {
   if (isAdj(i0, j0, range, i, j) &&
-    (getType(Unit.getUnit(i, j)) === 'Platform' || Unit.getUnit(i, j) === undefined) &&
+      (getType(Unit.getUnit(i, j)) === 'Platform' ||
+      Unit.getUnit(i, j) === undefined) &&
       ((ter[i][j] === 0 || getType(Unit.getUnit(i, j)) === 'Platform') ||
-        (floats && ter[i][j] === 2))) {
+      (floats && ter[i][j] === 2))) {
     return true;
   }
   return false;
@@ -799,16 +818,18 @@ function canMove(i0, j0, range, i, j, floats = false) {
 function canFire(i0, j0, range, i, j) {
   const enm = Unit.getUnit(i, j);
   console.log({ enemy: Unit.getUnit(i, j) });
-  if (isAdj(i0, j0, range, i, j) && enm !== undefined &&
-    enm.plr.id !== actPlNum) {
+  if (isAdj(i0, j0, range, i, j) &&
+      enm !== undefined &&
+      enm.plr.id !== actPlNum) {
     return true;
   }
   return false;
 }
 
 function canSetCheck(fCheck, u, onGround, onWater, param, i, j) {
-  if (fCheck(i, j, u, param) && f[i][j] === actPlNum &&
-    Unit.getUnit(i, j) === undefined &&
+  if (fCheck(i, j, u, param) &&
+      f[i][j] === actPlNum &&
+      Unit.getUnit(i, j) === undefined &&
       ((onGround && ter[i][j] < 1) || (onWater && ter[i][j] === 2))) {
     return true;
   }
@@ -825,7 +846,7 @@ function canSetNearCity(i, j, u, city) {
 function performAct(i, j, fnAtt = false) {
   if (action.aType === actType.CREATE) {
     if (players[actPlNum].money >= action.u.price &&
-      (action.city === undefined || action.city.energy >= 2)) {
+        (action.city === undefined || action.city.energy >= 2)) {
       players[actPlNum].money -= action.u.price;
       action.u.energy = 0;
       if (action.city !== undefined) {
@@ -964,13 +985,9 @@ function drawBackgr() {
     for (let j = 0; j < fHeight; j++) {
       const val = ter[i][j];
       const [x, y] = getXY(i, j);
-      if (val === 0) {
-        drawGround(x, y);
-      } else if (val === 1) {
-        drawMount(x, y);
-      } else if (val === 2) {
-        drawWater(x, y);
-      }
+      if (val === 0) drawGround(x, y);
+      else if (val === 1) drawMount(x, y);
+      else if (val === 2) drawWater(x, y);
     }
   }
 }
@@ -1019,22 +1036,15 @@ function drawF(x, y, ...col) {
 
 function drawGround(x, y) {
   const r = rand01(...getIJ(x, y));
-  if (r === 1) {
-    image(textures.ground0, x, y, fieldSize, fieldSize);
-  } else {
-    image(textures.ground1, x, y, fieldSize, fieldSize);
-  }
-  // drawF(x, y, 142, 209, 79);
+  if (r === 1) image(textures.ground0, x, y, fieldSize, fieldSize);
+  else image(textures.ground1, x, y, fieldSize, fieldSize);
 }
 
 function drawMount(x, y) {
   drawGround(x, y);
   const r = rand01(...getIJ(x, y));
-  if (r === 1) {
-    image(textures.mount0, x, y, fieldSize, fieldSize);
-  } else {
-    image(textures.mount1, x, y, fieldSize, fieldSize);
-  }
+  if (r === 1) image(textures.mount0, x, y, fieldSize, fieldSize);
+  else image(textures.mount1, x, y, fieldSize, fieldSize);
 }
 
 function drawWater(x, y) {
@@ -1051,11 +1061,8 @@ function drawFort(x, y, plr) {
 
 function drawFarm(x, y, plr) {
   const r = rand01(...getIJ(x, y));
-  if (r === 1) {
-    image(textures.farm0, x, y, fieldSize, fieldSize);
-  } else {
-    image(textures.farm1, x, y, fieldSize, fieldSize);
-  }
+  if (r === 1) image(textures.farm0, x, y, fieldSize, fieldSize);
+  else image(textures.farm1, x, y, fieldSize, fieldSize);
 }
 
 function drawPlatform(x, y, plr) {
@@ -1071,12 +1078,14 @@ function drawTank(x, y, plr) {
 
 function drawCanMove(x, y) {
   fill(100, 255, 0, 100);
-  rect(x + fieldSize / 8, y + fieldSize / 8, (fieldSize / 4) * 3, (fieldSize / 4) * 3);
+  rect(x + fieldSize / 8, y + fieldSize / 8,
+    (fieldSize / 4) * 3, (fieldSize / 4) * 3);
 }
 
 function drawCanAttack(x, y) {
   fill(255, 0, 0, 100);
-  rect(x + fieldSize / 8, y + fieldSize / 8, (fieldSize / 4) * 3, (fieldSize / 4) * 3);
+  rect(x + fieldSize / 8, y + fieldSize / 8,
+    (fieldSize / 4) * 3, (fieldSize / 4) * 3);
 }
 
 function drawCross(x, y) {
@@ -1112,7 +1121,8 @@ function drawMainInfo() {
   fill(getBrightColor(players[actPlNum].color));
   text(`Player ${actPlNum + 1}`, width - 300, height - 200, 250, 50);
   fill('gold');
-  text(`${players[actPlNum].money}$ (+${getEarnings()})`, width - 300, height - 140, 250, 50);
+  text(`${players[actPlNum].money}$ (+${getEarnings()})`,
+    width - 300, height - 140, 250, 50);
 }
 
 function getBrightColor(c) { // optimize
@@ -1149,26 +1159,15 @@ function drawBorders() {
 function drawUnit(u) {
   const [x, y] = getXY(u.i, u.j);
   const type = getType(u);
-  if (type === 'City') {
-    drawCity(x, y, u.plr);
-  } else if (type === 'Man') {
-    drawMan(x, y, u.plr);
-  } else if (type === 'Tank') {
-    drawTank(x, y, u.plr);
-  } else if (type === 'Fort') {
-    drawFort(x, y, u.plr);
-  } else if (type === 'Farm') {
-    drawFarm(x, y, u.plr);
-  } else if (type === 'Platform') {
-    drawPlatform(x, y, u.plr);
-  }
+  if (type === 'City') drawCity(x, y, u.plr);
+  else if (type === 'Man') drawMan(x, y, u.plr);
+  else if (type === 'Tank') drawTank(x, y, u.plr);
+  else if (type === 'Fort') drawFort(x, y, u.plr);
+  else if (type === 'Farm') drawFarm(x, y, u.plr);
+  else if (type === 'Platform') drawPlatform(x, y, u.plr);
 }
 
 function drawUnits() {
-  units.forEach(u => {
-    if (getType(u) === 'Platform') drawUnit(u);
-  });
-  units.forEach(u => {
-    if (getType(u) !== 'Platform') drawUnit(u);
-  });
+  units.forEach(u => { if (getType(u) === 'Platform') drawUnit(u); });
+  units.forEach(u => { if (getType(u) !== 'Platform') drawUnit(u); });
 }
