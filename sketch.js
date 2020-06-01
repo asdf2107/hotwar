@@ -3,13 +3,13 @@
 
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
-const units = []; // man; tank; city; wall
+const units = []; // man; tank; city; fort; farm; platform
 const players = []; // active palyers
 const buttons = [];
 const fWidth = 12, fHeight = 12, fAlpha = 100, sideButWidth = 30,
   sidePadWidth = 350;
 let action, actPlNum = 1, waterTime = 0, offsetX = 10, offsetY = 10,
-  fieldSize = 48, sidePadOpen = true, sideButton, uiButtons = {};
+  fieldSize = 48, sidePadOpen = true, sideButton, uiButtons = {}, winner = -1;
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -474,6 +474,24 @@ function draw() {
     drawMainInfo();
   }
   drawButtons();
+  if (winner !== -1) {
+    drawWin(players[winner]);
+  }
+}
+
+function checkNotLostPlr(plNum) {
+  for (const u of units) {
+    if (getType(u) === 'City' && u.plr.id === plNum) return true;
+  }
+  return false;
+}
+
+function checkWin() {
+  const notLost = [];
+  for (const plr of players) {
+    if (checkNotLostPlr(plr.id)) notLost.push(plr);
+  }
+  if (notLost.length === 1) winner = notLost[0].id;
 }
 
 function setStartLocation() {
@@ -632,6 +650,7 @@ function mouseWheel(event) {
 
 function perfNextTurn() {
   Player.nextTurn();
+  checkWin();
   updButtonObjs();
 }
 
@@ -959,6 +978,17 @@ function drawBackgr() {
 function drawSidePad() {
   fill(100);
   rect(width - sidePadWidth, 0, sidePadWidth, height);
+}
+
+function drawWin(plr) {
+  const marg = 20;
+  fill(getBrightColor(plr.color));
+  rect(marg, marg, width - 2 * marg, height - 2 * marg);
+  fill(255);
+  textSize(35);
+  textAlign(CENTER, CENTER);
+  textFont(fonts.mainFont);
+  text(`Player ${plr.id + 1} wins!`, 0, height / 2, width, 40);
 }
 
 function drawButtons() {
