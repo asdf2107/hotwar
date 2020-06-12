@@ -1,6 +1,3 @@
-/* eslint-disable no-undef */
-'use strict';
-
 const f = []; // -1 - uncaptured; 0 - player 0; 1 - player 1; ...
 const ter = []; // 0 - ground; 1 - mountain; 2 - sea
 const units = []; // man; tank; city; wall
@@ -13,20 +10,20 @@ const textures = {};
 const sounds = {};
 const fonts = {};
 const animations = [];
-const fWidth = 12;
-const fHeight = 12;
-const fAlpha = 100;
-const sideButWidth = 30;
-const sidePadWidth = 350;
+const sizes = {
+  fWidth: 12,
+  fHeight: 12,
+  fAlpha: 100,
+  sideButWidth: 30,
+  sidePadWidth: 350,
+  offsetX: 10,
+  offsetY: 10,
+  fieldSize: 48,
+};
 let waterTime = 0;
-let offsetX = 10;
-let offsetY = 10;
-let fieldSize = 48;
 let sidePadOpen = true;
-
 let action;
-let actPlNum = 1;
-let winner = -1;
+
 const actType = { // type of an action
   CREATE: 'c',
   MOVEATTACK: 'mt',
@@ -46,6 +43,7 @@ const priceList = {
   repairFort: 10,
   repairFarm: 0,
   repairPlatform: 0,
+  remMount: 40,
 };
 
 const lock = (f, ...args) => (...args2) => f(...args, ...args2);
@@ -64,7 +62,7 @@ class Animation {
 
   draw() {
     const [x, y] = getXY(this.i, this.j);
-    image(this.images[this.imgIndex], x, y, fieldSize, fieldSize);
+    image(this.images[this.imgIndex], x, y, sizes.fieldSize, sizes.fieldSize);
   }
 
   addCounter() {
@@ -117,8 +115,8 @@ class Button {
           mouseX,
           mouseY,
           ...getXY(zone.i, zone.j),
-          fieldSize,
-          fieldSize
+          sizes.fieldSize,
+          sizes.fieldSize
         )) {
           act.push(zone);
         } else if (zone.scalable === false && isInArea(
@@ -173,7 +171,7 @@ class Unit {
     this.price = price;
   }
 
-  static getUnit(i, j) { //DOESNT WORK
+  static getUnit(i, j) {
     const arr = [];
     units.forEach(u => {
       if (u.i === i && u.j === j) {
@@ -228,7 +226,7 @@ class City extends Unit {
 
 class Fort extends Unit {
   constructor(i, j, plr) {
-    super(i, j, plr, 4, -1, -1, -1, 0, priceList.fort);
+    super(i, j, plr, 4, -1, -1, -1, 1, priceList.fort);
   }
 }
 
@@ -282,21 +280,26 @@ function getType(u) {
 }
 
 class Player {
+  static actPlNum = 1;
+  static startingMoney = 80;
+  static winner = -1;
+
   constructor(id, color) {
     this.id = id;
     this.color = color;
-    this.money = 95;
+    this.money = Player.startingMoney;
   }
 
   conq(i, j) {
     f[i][j] = this.id;
-    // Set player property for units at [i][j] to actPlId
+    // const u = Unit.getUnit(i, j).plr;
+    // if (u) u.plr = this;
   }
 
   static nextTurn(noButtons = false) {
     action = undefined;
     autoCaptureMountsSeas();
-    actPlNum = actPlNum === players.length - 1 ? 0 : ++actPlNum;
+    Player.actPlNum = Player.actPlNum === players.length - 1 ? 0 : ++Player.actPlNum;
     if (!noButtons) showNonCityButtons();
     refillEnergy();
     addMoney();
@@ -304,13 +307,13 @@ class Player {
 }
 
 function addMoney() {
-  players[actPlNum].money += getEarnings();
+  players[Player.actPlNum].money += getEarnings();
 }
 
 function getEarnings() {
   let cities = 0, farms = 0, army = 0;
   units.forEach(u => {
-    if (u.plr.id === actPlNum) {
+    if (u.plr.id === Player.actPlNum) {
       if (getType(u) === 'City') ++cities;
       else if (getType(u) === 'Farm') ++farms;
       else if (getType(u) === 'Man' || getType(u) === 'Tank') ++army;
@@ -360,8 +363,8 @@ function isAdj(i0, j0, d, i, j, noCenter = true) {
 // d: 0-cross[4]; 1-square[8]; 2-rhombus[12]
 function getAdj(d, i, j, noCenter = true) {
   const res = [];
-  for (let it = 0; it < fWidth; it++) {
-    for (let jt = 0; jt < fHeight; jt++) {
+  for (let it = 0; it < sizes.fWidth; it++) {
+    for (let jt = 0; jt < sizes.fHeight; jt++) {
       if (isAdj(it, jt, d, i, j, noCenter)) {
         res.push({
           i: it,
@@ -390,40 +393,40 @@ function fieldClick(i, j) {
     }
   } else if (getType(u) === undefined || u === undefined) {
     showNonCityButtons();
-  } else if (getType(u) === 'City' && u.plr.id === actPlNum) {
+  } else if (getType(u) === 'City' && u.plr.id === Player.actPlNum) {
     showBasicUnitButtons(u);
     showCityButtons(u);
   } else if ((getType(u) === 'Man' || getType(u) === 'Tank') &&
-      u.plr.id === actPlNum) {
+      u.plr.id === Player.actPlNum) {
     showBasicUnitButtons(u);
     fireMoveUnit(u);
-  } else if (getType(u) !== undefined && u.plr.id === actPlNum) {
+  } else if (getType(u) !== undefined && u.plr.id === Player.actPlNum) {
     showBasicUnitButtons(u);
+  } else if (ter[i][j] === 1) {
+    showMountainButtons();
   }
 }
 
-// eslint-disable-next-line no-unused-vars
 function preload() {
   loadTextures();
   loadSounds();
   loadFonts();
 }
 
-// eslint-disable-next-line no-unused-vars
 function setup() {
-  players.push(new Player(0, color(0, 0, 255, fAlpha)));
-  players.push(new Player(1, color(255, 0, 0, fAlpha)));
+  players.push(new Player(0, color(0, 0, 255, sizes.fAlpha)));
+  players.push(new Player(1, color(255, 0, 0, sizes.fAlpha)));
   initArr(f, -1);
   initArr(ter);
   units.push(new City(1, 1, players[0]));
-  units.push(new City(fWidth - 2, fHeight - 2, players[1]));
+  units.push(new City(sizes.fWidth - 2, sizes.fHeight - 2, players[1]));
   players[0].conq(1, 1);
-  players[1].conq(fWidth - 2, fHeight - 2);
+  players[1].conq(sizes.fWidth - 2, sizes.fHeight - 2);
   genTerrain();
   setAdj(1, 1, 0, f);
-  setAdj(fWidth - 2, fHeight - 2, 1, f);
+  setAdj(sizes.fWidth - 2, sizes.fHeight - 2, 1, f);
   setAdj(1, 1, 0, ter, false);
-  setAdj(fWidth - 2, fHeight - 2, 0, ter, false);
+  setAdj(sizes.fWidth - 2, sizes.fHeight - 2, 0, ter, false);
   initGridClick();
   const cnv = createCanvas(windowWidth - 3, windowHeight - 3);
   setStartLocation();
@@ -438,14 +441,16 @@ function setup() {
 }
 
 function updButtonObjs() {
-  uiButtons.city.callback = lock(buyOnTer, new City(-1, -1, players[actPlNum]));
-  uiButtons.fort.callback = lock(buyOnTer, new Fort(-1, -1, players[actPlNum]));
-  uiButtons.farm.callback = lock(buyOnTer, new Farm(-1, -1, players[actPlNum]));
+  uiButtons.city.callback = lock(buyOnTer,
+    new City(-1, -1, players[Player.actPlNum]));
+  uiButtons.fort.callback = lock(buyOnTer,
+    new Fort(-1, -1, players[Player.actPlNum]));
+  uiButtons.farm.callback = lock(buyOnTer,
+    new Farm(-1, -1, players[Player.actPlNum]));
   uiButtons.platform.callback = lock(buyOnTer,
-    new Platform(-1, -1, players[actPlNum]), false, true);
+    new Platform(-1, -1, players[Player.actPlNum]), false, true);
 }
 
-// eslint-disable-next-line no-unused-vars
 function draw() {
   dragScrn();
   noSmooth();
@@ -463,35 +468,50 @@ function draw() {
     drawMainInfo();
   }
   drawButtons();
-  if (winner !== -1) {
-    drawWin(players[winner]);
+  if (Player.winner !== -1) {
+    drawWin(players[Player.winner]);
   }
 }
 
 function initUIButtons() {
+  const xLoc = width - 300;
+  const w = 300;
+  const h = 50;
+  const gr = 2;
+  const defCol = color(255);
+  const yMin = 50;
+  const yMargin = 15;
+  const yLocs = [];
+  for (let i = 0; i < 5; i++) {
+    yLocs.push(yMin + i * (h + yMargin));
+  }
+  console.log(yLocs);
+
   sideButton = new Button(
-    sidePadClick, width - sidePadWidth - sideButWidth, 0,
-    sideButWidth, height, false, color(255), '>', 3, 3);
+    sidePadClick, width - sizes.sidePadWidth - sizes.sideButWidth, 0,
+    sizes.sideButWidth, height, false, color(255), '>', 3, 3);
   buttons.push(sideButton);
   uiButtons = {
-    nextTurn: new Button(perfNextTurn, width - 300, height - 70, 300, 50,
-      false, color(255), 'END TURN', 2, 2),
-    delete: new Button(() => undefined, width - 300, 20, 300, 50,
-      false, color(255, 100, 100), 'delete', 2, 2),
-    repair: new Button(() => undefined, width - 300, 120, 300, 50,
-      false, color(255), 'repair', 2, 2),
-    city: new Button(() => undefined, width - 300, 50, 300, 50,
-      false, color(255), `city ${priceList.city}$`, 1, 2),
-    fort: new Button(() => undefined, width - 300, 120, 300, 50,
-      false, color(255), `fort ${priceList.fort}$`, 1, 2),
-    farm: new Button(() => undefined, width - 300, 190, 300, 50,
-      false, color(255), `farm ${priceList.farm}$`, 1, 2),
-    platform: new Button(() => undefined, width - 300, 260, 300, 50,
-      false, color(255), `platform ${priceList.platform}$`, 1, 2),
-    man: new Button(() => undefined, width - 300, 190, 300, 50,
-      false, color(255), `man ${priceList.man}$`, 2, 2),
-    tank: new Button(() => undefined, width - 300, 260, 300, 50,
-      false, color(255), `tank ${priceList.tank}$`, 2, 2),
+    nextTurn: new Button(perfNextTurn, xLoc, height - 70, w, h,
+      false, defCol, 'END TURN', 2, gr),
+    delete: new Button(() => undefined, xLoc, 20, w, h,
+      false, color(255, 100, 100), 'delete', 2, gr),
+    repair: new Button(() => undefined, xLoc, yLocs[1], w, h,
+      false, defCol, 'repair', 2, gr),
+    city: new Button(() => undefined, xLoc, yLocs[0], w, h,
+      false, defCol, `city ${priceList.city}$`, 1, gr),
+    fort: new Button(() => undefined, xLoc, yLocs[1], w, h,
+      false, defCol, `fort ${priceList.fort}$`, 1, gr),
+    farm: new Button(() => undefined, xLoc, yLocs[2], w, h,
+      false, defCol, `farm ${priceList.farm}$`, 1, gr),
+    platform: new Button(() => undefined, xLoc, yLocs[3], w, h,
+      false, defCol, `platform ${priceList.platform}$`, 1, gr),
+    man: new Button(() => undefined, xLoc, yLocs[2], w, h,
+      false, defCol, `man ${priceList.man}$`, 2, gr),
+    tank: new Button(() => undefined, xLoc, yLocs[3], w, h,
+      false, defCol, `tank ${priceList.tank}$`, 2, gr),
+    remMount: new Button(() => undefined, xLoc, yLocs[1], w, h,
+      false, defCol, `remove ${priceList.remMount}$`, 2, gr),
   };
 }
 
@@ -507,14 +527,14 @@ function checkWin() {
   for (const plr of players) {
     if (checkNotLostPlr(plr.id)) notLost.push(plr);
   }
-  if (notLost.length === 1) winner = notLost[0].id;
+  if (notLost.length === 1) Player.winner = notLost[0].id;
 }
 
 function setStartLocation() {
-  fieldSize = Math.floor(windowHeight / fHeight) - 2;
-  const startOffsetX = Math.abs((width - 300 - fieldSize * fWidth) / 2) - 1;
+  sizes.fieldSize = Math.floor(windowHeight / sizes.fHeight) - 2;
+  const startOffsetX = Math.abs((width - 300 - sizes.fieldSize * sizes.fWidth) / 2) - 1;
   if (startOffsetX > 0) {
-    offsetX = startOffsetX;
+    sizes.offsetX = startOffsetX;
   }
 }
 
@@ -534,11 +554,8 @@ function animateWater() {
 let dragging = false;
 function dragScrn() {
   if (mouseIsPressed && dragging) {
-    // eslint-disable-next-line no-undef
-    offsetX += movedX;
-    // eslint-disable-next-line no-undef
-    offsetY += movedY;
-    // eslint-disable-next-line no-undef
+    sizes.offsetX += movedX;
+    sizes.offsetY += movedY;
   } else if (mouseIsPressed && (Math.abs(movedX) > 5 || Math.abs(movedY) > 5)) {
     dragging = true;
   } else {
@@ -603,8 +620,8 @@ function setTexture(name, val = 0) {
 
 function drawActionZones() {
   if (action !== undefined) {
-    for (let i = 0; i < fWidth; i++) {
-      for (let j = 0; j < fHeight; j++) {
+    for (let i = 0; i < sizes.fWidth; i++) {
+      for (let j = 0; j < sizes.fHeight; j++) {
         if (action.zones[i][j] === 1) {
           drawCanMove(getXY(i, j)[0], getXY(i, j)[1]);
         } else if (action.zones[i][j] === 2) {
@@ -618,8 +635,8 @@ function drawActionZones() {
 function updateActionZones() {
   action.zones = []; // 1 - can move, 2 - can attack
   initArr(action.zones);
-  for (let i = 0; i < fWidth; i++) {
-    for (let j = 0; j < fHeight; j++) {
+  for (let i = 0; i < sizes.fWidth; i++) {
+    for (let j = 0; j < sizes.fHeight; j++) {
       if (action.aType === actType.CREATE) {
         action.u.i = i;
         action.u.j = j;
@@ -635,15 +652,15 @@ function updateActionZones() {
 
 function refillEnergy() {
   units.forEach(u => {
-    if (u.plr.id === actPlNum) {
+    if (u.plr.id === Player.actPlNum) {
       u.energy = u.maxEnergy;
     }
   });
 }
 
 function autoCaptureMountsSeas() {
-  for (let i = 0; i < fWidth; i++) {
-    for (let j = 0; j < fHeight; j++) {
+  for (let i = 0; i < sizes.fWidth; i++) {
+    for (let j = 0; j < sizes.fHeight; j++) {
       if (f[i][j] === -1 && ter[i][j] > 0) {
         getAdj(0, i, j).forEach(el => {
           if (f[el.i][el.j] > -1 &&
@@ -657,11 +674,10 @@ function autoCaptureMountsSeas() {
   }
 }
 
-// eslint-disable-next-line no-unused-vars
 function mouseWheel(event) {
-  fieldSize -= Math.floor(event.delta);
-  if (fieldSize < 4) {
-    fieldSize = 4;
+  sizes.fieldSize -= Math.floor(event.delta);
+  if (sizes.fieldSize < 4) {
+    sizes.fieldSize = 4;
   }
   return false;
 }
@@ -699,6 +715,14 @@ function showCityButtons(u) {
   hideSideIfNeed();
 }
 
+function showMountainButtons(i, j) {
+  hideSideButtons();
+  showBasicUnitButtons(false);
+  uiButtons.remMount.callback = lock(buyTank, i, j);
+  uiButtons.remMount.enabled = true;
+  hideSideIfNeed();
+}
+
 function showNonCityButtons() {
   hideSideButtons();
   uiButtons.city.enabled = true;
@@ -732,12 +756,12 @@ function closeSidePad() {
 
 function sidePadClick() {
   if (!sidePadOpen) {
-    sideButton.x = width - sidePadWidth - sideButWidth;
+    sideButton.x = width - sizes.sidePadWidth - sizes.sideButWidth;
     sideButton.text = '>';
     openSidePad();
   } else {
     closeSidePad();
-    sideButton.x = width - sideButWidth;
+    sideButton.x = width - sizes.sideButWidth;
     sideButton.text = '<';
   }
   hideSideIfNeed();
@@ -745,15 +769,15 @@ function sidePadClick() {
 
 function repairUnit(u) {
   const price = priceList[`repair${getType(u)}`];
-  if (u.hp < u.maxHp && players[actPlNum].money >= price && u.energy >= 1) {
-    players[actPlNum].money -= price;
+  if (u.hp < u.maxHp && players[Player.actPlNum].money >= price && u.energy >= 1) {
+    players[Player.actPlNum].money -= price;
     ++u.hp;
     --u.energy;
   }
 }
 
 function buyMan(city) {
-  const m = new Man(0, 0, players[actPlNum]);
+  const m = new Man(0, 0, players[Player.actPlNum]);
   action = {
     fnCrMv: lock(canSetCheck, canSetNearCity, m, true, false, city),
     u: m,
@@ -764,7 +788,7 @@ function buyMan(city) {
 }
 
 function buyTank(city) {
-  const t = new Tank(0, 0, players[actPlNum]);
+  const t = new Tank(0, 0, players[Player.actPlNum]);
   action = {
     fnCrMv: lock(canSetCheck, canSetNearCity, t, true, false, city),
     u: t,
@@ -820,7 +844,7 @@ function canFire(i0, j0, range, i, j) {
   console.log({ enemy: Unit.getUnit(i, j) });
   if (isAdj(i0, j0, range, i, j) &&
       enm !== undefined &&
-      enm.plr.id !== actPlNum) {
+      enm.plr.id !== Player.actPlNum) {
     return true;
   }
   return false;
@@ -828,7 +852,7 @@ function canFire(i0, j0, range, i, j) {
 
 function canSetCheck(fCheck, u, onGround, onWater, param, i, j) {
   if (fCheck(i, j, u, param) &&
-      f[i][j] === actPlNum &&
+      f[i][j] === Player.actPlNum &&
       Unit.getUnit(i, j) === undefined &&
       ((onGround && ter[i][j] < 1) || (onWater && ter[i][j] === 2))) {
     return true;
@@ -845,9 +869,9 @@ function canSetNearCity(i, j, u, city) {
 
 function performAct(i, j, fnAtt = false) {
   if (action.aType === actType.CREATE) {
-    if (players[actPlNum].money >= action.u.price &&
+    if (players[Player.actPlNum].money >= action.u.price &&
         (action.city === undefined || action.city.energy >= 2)) {
-      players[actPlNum].money -= action.u.price;
+      players[Player.actPlNum].money -= action.u.price;
       action.u.energy = 0;
       if (action.city !== undefined) {
         action.city.energy -= 2;
@@ -856,7 +880,7 @@ function performAct(i, j, fnAtt = false) {
     }
   } else if (action.aType === actType.MOVE) {
     if (action.u.energy > 0) {
-      players[actPlNum].conq(i, j);
+      players[Player.actPlNum].conq(i, j);
       action.u.energy -= 1;
       setActionUnit(i, j, false);
     }
@@ -869,9 +893,9 @@ function performAct(i, j, fnAtt = false) {
         attackFromUnit(i, j);
       }
     } else if (action.u.energy > 0) { // move
-      players[actPlNum].conq(i, j);
+      players[Player.actPlNum].conq(i, j);
       if (getType(action.u) === 'Tank') {
-        setAdj(i, j, actPlNum, f, true);
+        setAdj(i, j, Player.actPlNum, f, true);
       }
       action.u.energy -= 1;
       setActionUnit(i, j, false);
@@ -895,19 +919,19 @@ function attackFromUnit(i, j) {
 }
 
 function getXY(i, j) {
-  return [i * fieldSize + offsetX, j * fieldSize + offsetY];
+  return [i * sizes.fieldSize + sizes.offsetX, j * sizes.fieldSize + sizes.offsetY];
 }
 
 function getIJ(x, y) {
   return [
-    Math.round((x - offsetX) / fieldSize - 0.5),
-    Math.round((y - offsetY) / fieldSize - 0.5)
+    Math.round((x - sizes.offsetX) / sizes.fieldSize - 0.5),
+    Math.round((y - sizes.offsetY) / sizes.fieldSize - 0.5)
   ];
 }
 
 function initGridClick() {
-  for (let i = 0; i < fWidth; i++) {
-    for (let j = 0; j < fHeight; j++) {
+  for (let i = 0; i < sizes.fWidth; i++) {
+    for (let j = 0; j < sizes.fHeight; j++) {
       const b = new Button(lock(fieldClick, i, j), 0, 0, 0, 0, true);
       b.i = i;
       b.j = j;
@@ -918,10 +942,10 @@ function initGridClick() {
 
 function initArr(arr, val = 0) {
   const ySlice = [];
-  for (let i = 0; i < fHeight; i++) {
+  for (let i = 0; i < sizes.fHeight; i++) {
     ySlice.push(val);
   }
-  for (let i = 0; i < fWidth; i++) {
+  for (let i = 0; i < sizes.fWidth; i++) {
     arr.push(ySlice.slice());
   }
 }
@@ -934,7 +958,7 @@ function isInArea(x0, y0, x, y, w, h) {
 }
 
 function isInBounds(i, j) {
-  if (i >= 0 && j >= 0 && i < fWidth && j < fHeight) {
+  if (i >= 0 && j >= 0 && i < sizes.fWidth && j < sizes.fHeight) {
     return true;
   }
   return false;
@@ -958,8 +982,8 @@ function getHighestPr(arr) {
 
 function genTerrain() {
   const noiseScale = 0.4;
-  for (let i = 0; i < fWidth; i++) {
-    for (let j = 0; j < fHeight; j++) {
+  for (let i = 0; i < sizes.fWidth; i++) {
+    for (let j = 0; j < sizes.fHeight; j++) {
       const n = noise(i * noiseScale, j * noiseScale);
       const r = random();
       if (n < 0.37) {
@@ -972,7 +996,7 @@ function genTerrain() {
 }
 
 function rand01(v1, v2 = 0) {
-  const seed = v1 + v2 * fWidth;
+  const seed = v1 + v2 * sizes.fWidth;
   if (seed % 5 === 0 || seed % 6 === 0 || seed % 11 === 0) {
     return 0;
   }
@@ -981,8 +1005,8 @@ function rand01(v1, v2 = 0) {
 
 // DRAW
 function drawBackgr() {
-  for (let i = 0; i < fWidth; i++) {
-    for (let j = 0; j < fHeight; j++) {
+  for (let i = 0; i < sizes.fWidth; i++) {
+    for (let j = 0; j < sizes.fHeight; j++) {
       const val = ter[i][j];
       const [x, y] = getXY(i, j);
       if (val === 0) drawGround(x, y);
@@ -994,7 +1018,7 @@ function drawBackgr() {
 
 function drawSidePad() {
   fill(100);
-  rect(width - sidePadWidth, 0, sidePadWidth, height);
+  rect(width - sizes.sidePadWidth, 0, sizes.sidePadWidth, height);
 }
 
 function drawWin(plr) {
@@ -1031,68 +1055,68 @@ function drawButton(b) {
 
 function drawF(x, y, ...col) {
   fill(...col);
-  rect(x, y, fieldSize, fieldSize);
+  rect(x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawGround(x, y) {
   const r = rand01(...getIJ(x, y));
-  if (r === 1) image(textures.ground0, x, y, fieldSize, fieldSize);
-  else image(textures.ground1, x, y, fieldSize, fieldSize);
+  if (r === 1) image(textures.ground0, x, y, sizes.fieldSize, sizes.fieldSize);
+  else image(textures.ground1, x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawMount(x, y) {
   drawGround(x, y);
   const r = rand01(...getIJ(x, y));
-  if (r === 1) image(textures.mount0, x, y, fieldSize, fieldSize);
-  else image(textures.mount1, x, y, fieldSize, fieldSize);
+  if (r === 1) image(textures.mount0, x, y, sizes.fieldSize, sizes.fieldSize);
+  else image(textures.mount1, x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawWater(x, y) {
-  image(textures.water, x, y, fieldSize, fieldSize);
+  image(textures.water, x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawCity(x, y, plr) {
-  image(textures.city, x, y, fieldSize, fieldSize);
+  image(textures.city, x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawFort(x, y, plr) {
-  image(textures.fort, x, y, fieldSize, fieldSize);
+  image(textures.fort, x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawFarm(x, y, plr) {
   const r = rand01(...getIJ(x, y));
-  if (r === 1) image(textures.farm0, x, y, fieldSize, fieldSize);
-  else image(textures.farm1, x, y, fieldSize, fieldSize);
+  if (r === 1) image(textures.farm0, x, y, sizes.fieldSize, sizes.fieldSize);
+  else image(textures.farm1, x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawPlatform(x, y, plr) {
-  image(textures.platform, x, y, fieldSize, fieldSize);
+  image(textures.platform, x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawMan(x, y, plr) {
-  image(textures[`man0p${plr.id}`], x, y, fieldSize, fieldSize);}
+  image(textures[`man0p${plr.id}`], x, y, sizes.fieldSize, sizes.fieldSize);}
 
 function drawTank(x, y, plr) {
-  image(textures[`tank0p${plr.id}`], x, y, fieldSize, fieldSize);
+  image(textures[`tank0p${plr.id}`], x, y, sizes.fieldSize, sizes.fieldSize);
 }
 
 function drawCanMove(x, y) {
   fill(100, 255, 0, 100);
-  rect(x + fieldSize / 8, y + fieldSize / 8,
-    (fieldSize / 4) * 3, (fieldSize / 4) * 3);
+  rect(x + sizes.fieldSize / 8, y + sizes.fieldSize / 8,
+    (sizes.fieldSize / 4) * 3, (sizes.fieldSize / 4) * 3);
 }
 
 function drawCanAttack(x, y) {
   fill(255, 0, 0, 100);
-  rect(x + fieldSize / 8, y + fieldSize / 8,
-    (fieldSize / 4) * 3, (fieldSize / 4) * 3);
+  rect(x + sizes.fieldSize / 8, y + sizes.fieldSize / 8,
+    (sizes.fieldSize / 4) * 3, (sizes.fieldSize / 4) * 3);
 }
 
 function drawCross(x, y) {
   stroke(255, 0, 0, 50);
   strokeWeight(6);
-  line(x, y, x + fieldSize, y + fieldSize);
-  line(x, y + fieldSize, x + fieldSize, y);
+  line(x, y, x + sizes.fieldSize, y + sizes.fieldSize);
+  line(x, y + sizes.fieldSize, x + sizes.fieldSize, y);
   strokeWeight(0);
 }
 
@@ -1118,10 +1142,10 @@ function drawEnrg(x, y, hp, max) {
 
 function drawMainInfo() {
   textAlign(CENTER);
-  fill(getBrightColor(players[actPlNum].color));
-  text(`Player ${actPlNum + 1}`, width - 300, height - 200, 250, 50);
+  fill(getBrightColor(players[Player.actPlNum].color));
+  text(`Player ${Player.actPlNum + 1}`, width - 300, height - 200, 250, 50);
   fill('gold');
-  text(`${players[actPlNum].money}$ (+${getEarnings()})`,
+  text(`${players[Player.actPlNum].money}$ (+${getEarnings()})`,
     width - 300, height - 140, 250, 50);
 }
 
@@ -1135,7 +1159,7 @@ function drawBar(x, y, val, max, col) {
   const interval = 3, len = 4, hh = 4;
   const d = points => {
     for (let i = 0; i < points; i++) {
-      rect((interval + len) * i + x + interval, y + fieldSize, len, hh);
+      rect((interval + len) * i + x + interval, y + sizes.fieldSize, len, hh);
     }
   };
   fill(160);
@@ -1145,8 +1169,8 @@ function drawBar(x, y, val, max, col) {
 }
 
 function drawBorders() {
-  for (let i = 0; i < fWidth; i++) {
-    for (let j = 0; j < fHeight; j++) {
+  for (let i = 0; i < sizes.fWidth; i++) {
+    for (let j = 0; j < sizes.fHeight; j++) {
       const val = f[i][j];
       if (val !== -1) {
         const [x, y] = getXY(i, j);
